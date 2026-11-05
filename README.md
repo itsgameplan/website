@@ -1,36 +1,46 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Gameplan Website
 
-## Getting Started
+Gameplan's bilingual (English/Arabic) Next.js 16 homepage, with a custom, scroll-linked interactive 3D experience built using Anime.js v4 and Three.js.
 
-First, run the development server:
+## Setup
+
+Requires Node.js 20+.
 
 ```bash
+npm ci
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Visit `http://localhost:3000/en` or `http://localhost:3000/ar`.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+For production:
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+```bash
+npm run build
+npm run start
+```
 
-## Learn More
+## Interactive form study
 
-To learn more about Next.js, take a look at the following resources:
+The first four chapters are connected by a **single particle system** that stays on screen as the user scrolls:
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+| Chapter | 3D shape | Interaction |
+| --- | --- | --- |
+| Home | Abstract particle orb | Mouse movement gently pushes and scatters nearby particles |
+| About | Soccer, basketball, and tennis balls | The orb flows down and splits into three recognizable balls |
+| Ventures | Construction front loader | The balls dissolve and assemble into a loader with wheels, cab, arms, and bucket |
+| Advisory | Steel vault | The loader reforms into a steel safe with a circular lock door |
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+The 3D scene fades out before the Process and Apply sections, which keep their original functional content.
 
-## Deploy on Vercel
+- `components/ui/morphing-particle-scene.tsx`: WebGL render loop, real 3D geometric details, cursor interaction, animation management, responsive sizing, cleanup, and reduced-motion handling.
+- `lib/morph-shapes.ts`: Deterministic particle targets, point colors, and interpolation-ready arrays.
+- `app/gameplan.css`: Responsive placement and premium dark styling.
+- `components/gameplan-home.tsx`: Scene integration and chapter scrolling.
+- `i18n/translations.ts`: English and Arabic scene descriptions.
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+Anime.js `onScroll` synchronizes the 3D morph with the native scroll position, including Lenis smooth scrolling. Particle counts are reduced on mobile, geometry is created once per mount, and scene resources are cleaned up on unmount. It does not fetch external 3D models or images. If WebGL isn't supported, the site remains navigable.
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## Customizing the experience
+
+Change the four shapes in `lib/morph-shapes.ts` and the supplemental solid/wireframe details in `components/ui/morphing-particle-scene.tsx`. To adjust how early each transformation completes, edit the `0.29` viewport threshold in `resize()` in the scene component. The stage-to-section mapping is `home`, `about`, `ventures`, `advisory`.
