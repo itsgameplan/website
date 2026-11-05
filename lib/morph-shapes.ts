@@ -16,10 +16,16 @@ export type MorphSet = Record<FormName, MorphTarget> & {
   /** Vault door hinge (x, z) and handle hub (x, y) in normalised space. */
   vaultHinge: [number, number];
   vaultHub: [number, number];
+  /** Sports form: centre of the ball each particle belongs to (for drifting apart). */
+  sportsCenters: Float32Array;
+  /** Loader form: 1 for particles on the lift arm + bucket. */
+  loaderArm: Float32Array;
+  /** Lift-arm pivot (x, y) in normalised loader space. */
+  loaderPivot: [number, number];
 };
 
 type V3 = [number, number, number];
-type Sample = { p: V3; n: V3; c: V3; part?: number };
+type Sample = { p: V3; n: V3; c: V3; part?: number; extra?: V3; tag?: number };
 type Sampler = (r: () => number) => Sample | null;
 type Part = { area: number; density?: number; sample: Sampler };
 
@@ -163,13 +169,24 @@ function torus(center: V3, R: number, rt: number, color: (theta: number, phi: nu
   };
 }
 
+/** Attach motion data (ball centre, articulated-part tag) to every sample of a part. */
+function tagged(part: Part, data: { extra?: V3; tag?: number }): Part {
+  return {
+    ...part,
+    sample: (r) => {
+      const s = part.sample(r);
+      return s ? { ...s, ...data } : null;
+    },
+  };
+}
+
 /* ---------- build pipeline ---------- */
 
 const LIGHT = norm([-0.45, 0.75, 0.6]);
 const HALF = norm(add(LIGHT, [0, 0, 1]));
 const SORT_AXIS = norm([0.78, 0.5, 0.36]);
 
-type Built = { pos: V3[]; col: V3[]; part: number[]; center: V3; scale: number };
+type Built = { pos: V3[]; col: V3[]; part: number[]; extra: V3[]; tag: number[]; center: V3; scale: number };
 
 function build(count: number, parts: Part[], seed: number, opts: { fit?: number; shade?: number } = {}): Built {
   const r = rng(seed);
@@ -202,6 +219,8 @@ function build(count: number, parts: Part[], seed: number, opts: { fit?: number;
   const pos: V3[] = [];
   const col: V3[] = [];
   const part: number[] = [];
+  const extra: V3[] = [];
+  const tag: number[] = [];
   for (const s of samples) {
     pos.push(mul(sub(s.p, center), scale));
     const n = norm(s.n);
@@ -214,8 +233,10 @@ function build(count: number, parts: Part[], seed: number, opts: { fit?: number;
       Math.min(1, s.c[2] * light + spec * shade),
     ]);
     part.push(s.part ?? 0);
+    extra.push(s.extra ? mul(sub(s.extra, center), scale) : [0, 0, 0]);
+    tag.push(s.tag ?? 0);
   }
-  return { pos, col, part, center, scale };
+  return { pos, col, part, extra, tag, center, scale };
 }
 
 function orderedIndices(points: V3[], r: () => number) {
@@ -231,28 +252,38 @@ const CREAM = hex(0xf3ecd9);
 const GOLD = hex(0xe2ae62);
 const GOLD_DEEP = hex(0xb9833f);
 
-/* ---------- 01 — origin orb ---------- */
+/* ---------- 01 — origin fiber stream ---------- */
 
-function originParts(): Part[] {
-  return [
-    sphere([0, 0, 0], 1.18, (d) => {
-      const band = Math.abs(d[1]) < 0.06;
-      if (band) return GOLD;
-      const t = 0.5 + 0.5 * Math.sin(d[0] * 5.2 + d[1] * 3.1) * Math.cos(d[2] * 4.4);
-      return mix3(hex(0x5f7d93), CREAM, 0.35 + t * 0.65);
-    }),
-    // tilted orbit ring
-    {
-      area: 2.2,
-      sample: (r) => {
-        const a = r() * TAU;
-        const rad = 1.62 + (r() - 0.5) * 0.04;
-        let p: V3 = [Math.cos(a) * rad, (r() - 0.5) * 0.02, Math.sin(a) * rad];
-        p = rotZ(rotX(p, 0.35), 0.42);
-        return { p, n: [0, 0, 1], c: GOLD };
-      },
-    },
-  ];
+/** Half-width of the fiber ribbon in model units. */
+export const WAVE_HALF_WIDTH = 4.4;
+
+/**
+ * The fiber stream is a ribbon of vertical strands. Its real shape (wave,
+ * twist, vibration) is computed in the vertex shader every frame, so here we
+ * only store each particle's ribbon coordinates: (x, v ∈ [-1, 1], jitter).
+ */
+function buildWave(count: number, seed: number): Built {
+  const r = rng(seed);
+  const columns = Math.max(60, Math.round(Math.sqrt(count * 1.5)));
+  const perColumn = Math.ceil(count / columns);
+  const pos: V3[] = [];
+  for (let c = 0; c < columns && pos.length < count; c++) {
+    const x = -WAVE_HALF_WIDTH + (c / (columns - 1)) * WAVE_HALF_WIDTH * 2;
+    for (let k = 0; k < perColumn && pos.length < count; k++) {
+      const v = -1 + ((k + 0.5) / perColumn) * 2 + (r() - 0.5) * 0.012;
+      pos.push([x + (r() - 0.5) * 0.01, v, (r() - 0.5) * 0.06]);
+    }
+  }
+  const zero: V3 = [0, 0, 0];
+  return {
+    pos,
+    col: pos.map(() => mix3(hex(0x7d8ea0), CREAM, r())),
+    part: pos.map(() => 0),
+    extra: pos.map(() => zero),
+    tag: pos.map(() => 0),
+    center: zero,
+    scale: 1,
+  };
 }
 
 /* ---------- 02 — sport balls ---------- */
@@ -313,10 +344,18 @@ function sportsParts(): Part[] {
       return { p, n: rotZ(n, tilt), c };
     },
   };
-  return [soccer, basket, tennis, football];
+  return [
+    tagged(soccer, { extra: [0.05, -0.18, 0.55] }),
+    tagged(basket, { extra: [-1.2, 0.55, -0.45] }),
+    tagged(tennis, { extra: [1.18, 0.95, -0.05] }),
+    tagged(football, { extra: [1.25, -0.82, 0.05] }),
+  ];
 }
 
 /* ---------- 03 — wheel loader ---------- */
+
+const LOADER_PIVOT: [number, number] = [0.05, 0.25];
+const ARM = { tag: 1 };
 
 function loaderParts(): Part[] {
   const YEL = hex(0xf3b52c);
@@ -361,8 +400,8 @@ function loaderParts(): Part[] {
   parts.push(box([-0.22, 1.13, 0], [1.0, 0.07, 1.02], body(0.03)));
   // lift arms + hydraulic rams
   for (const z of [-0.4, 0.4]) {
-    parts.push(tube([0.05, 0.25, z], [1.6, -0.2, z], 0.1, YEL, { density: 1.3 }));
-    parts.push(tube([0.35, -0.22, z * 0.6], [1.15, 0.1, z * 0.6], 0.06, STEEL, { density: 1.4 }));
+    parts.push(tagged(tube([LOADER_PIVOT[0], LOADER_PIVOT[1], z], [1.6, -0.2, z], 0.1, YEL, { density: 1.3 }), ARM));
+    parts.push(tagged(tube([0.35, -0.22, z * 0.6], [1.15, 0.1, z * 0.6], 0.06, STEEL, { density: 1.4 }), ARM));
   }
   // bucket: curved scoop surface + side plates + steel cutting edge
   const p0: [number, number] = [1.68, 0.48], p1: [number, number] = [1.38, -1.05], p2: [number, number] = [2.42, -0.86];
@@ -380,7 +419,7 @@ function loaderParts(): Part[] {
       const [x2, y2] = curve(Math.min(1, t + 0.01));
       const n = norm([-(y2 - y), x2 - x, 0]);
       const z = (r() - 0.5) * W * 2;
-      return { p: [x, y, z], n: mul(n, -1), c: Math.abs(Math.abs(z) - W) < 0.04 ? YEL_EDGE : YEL };
+      return { p: [x, y, z], n: mul(n, -1), c: Math.abs(Math.abs(z) - W) < 0.04 ? YEL_EDGE : YEL, tag: ARM.tag };
     },
   });
   parts.push({
@@ -392,10 +431,10 @@ function loaderParts(): Part[] {
       const chord: [number, number] = [p0[0] + (p2[0] - p0[0]) * t, p0[1] + (p2[1] - p0[1]) * t];
       const k = r();
       const s = r() < 0.5 ? -1 : 1;
-      return { p: [cx + (chord[0] - cx) * k, cy + (chord[1] - cy) * k, s * W], n: [0, 0, s], c: k > 0.92 ? YEL_EDGE : YEL };
+      return { p: [cx + (chord[0] - cx) * k, cy + (chord[1] - cy) * k, s * W], n: [0, 0, s], c: k > 0.92 ? YEL_EDGE : YEL, tag: ARM.tag };
     },
   });
-  parts.push(tube([p2[0], p2[1], -W], [p2[0], p2[1], W], 0.045, STEEL, { density: 2.2 }));
+  parts.push(tagged(tube([p2[0], p2[1], -W], [p2[0], p2[1], W], 0.045, STEEL, { density: 2.2 }), ARM));
   return parts;
 }
 
@@ -461,14 +500,16 @@ export function createMorphTargets(count: number): MorphSet {
   const order = rng(7);
 
   const built: Record<FormName, Built> = {
-    origin: build(solid, originParts(), 11, { shade: 0.55 }),
+    origin: buildWave(solid, 11),
     sports: build(solid, sportsParts(), 23, { fit: 1.95 }),
     loader: build(solid, loaderParts(), 37, { fit: 2.1 }),
     vault: build(solid, vaultParts(), 53, { fit: 1.95 }),
   };
 
   const parts = new Float32Array(count);
-  const result = { parts } as MorphSet;
+  const sportsCenters = new Float32Array(count * 3);
+  const loaderArm = new Float32Array(count);
+  const result = { parts, sportsCenters, loaderArm } as MorphSet;
   (Object.keys(built) as FormName[]).forEach((name, formIndex) => {
     const b = built[name];
     const idx = orderedIndices(b.pos, order);
@@ -478,6 +519,8 @@ export function createMorphTargets(count: number): MorphSet {
       positions.set(b.pos[src], dst * 3);
       colors.set(b.col[src], dst * 3);
       if (name === "vault") parts[dst] = b.part[src];
+      if (name === "sports") sportsCenters.set(b.extra[src], dst * 3);
+      if (name === "loader") loaderArm[dst] = b.tag[src];
     });
     // ambient dust: same index range in every form, drifting shell around the subject
     const dr = rng(101 + formIndex);
@@ -494,5 +537,7 @@ export function createMorphTargets(count: number): MorphSet {
   const v = built.vault;
   result.vaultHinge = [(VAULT_HINGE[0] - v.center[0]) * v.scale, (VAULT_HINGE[1] - v.center[2]) * v.scale];
   result.vaultHub = [(0 - v.center[0]) * v.scale, (0 - v.center[1]) * v.scale];
+  const l = built.loader;
+  result.loaderPivot = [(LOADER_PIVOT[0] - l.center[0]) * l.scale, (LOADER_PIVOT[1] - l.center[1]) * l.scale];
   return result;
 }

@@ -13,14 +13,10 @@ export function VenturesSection({ t }: { t: Dictionary; }) {
           </div>
           <div className="gp-venture-grid">
             {([
-              { num: "01", title: t.ventureOne, desc: t.ventureOneDesc, kind: "arch" },
-              { num: "02", title: t.ventureTwo, desc: t.ventureTwoDesc, kind: "oval" },
-              { num: "03", title: t.ventureThree, desc: t.ventureThreeDesc, kind: "square" },
+              { num: "01", title: t.ventureOne, desc: t.ventureOneDesc },
+              { num: "02", title: t.ventureTwo, desc: t.ventureTwoDesc },
+              { num: "03", title: t.ventureThree, desc: t.ventureThreeDesc },
             ]).map((item, index) => <Reveal key={item.num} delay={index * 110}><article className="gp-venture-card" tabIndex={0} data-cursor={t.view}>
-              <div className={`gp-venture-visual gp-visual-${item.kind}`}>
-                <span className="gp-visual-grid"/><span className="gp-visual-shape">{index === 0 ? "↗" : index === 1 ? "✳" : "G"}</span>
-                <span className="gp-visual-label">GP — 00{index + 1}</span>
-              </div>
               <div className="gp-venture-meta"><span>/{item.num}</span><ArrowUpRight size={21}/></div>
               <h3>{item.title}</h3><p>{item.desc}</p>
             </article></Reveal>)}

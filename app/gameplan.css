@@ -243,3 +243,40 @@
     linear-gradient(137deg, #0b1521 0%, #142434 52%, #1d3341 100%);
 }
 .gp-advisory.gp-grid { background-color: #152838; }
+
+/* ===== Coloured void: one full-screen WebGL backdrop behind every section ===== */
+html, body { background: #070d16; }
+body { background-image: radial-gradient(ellipse 80% 70% at 60% 30%, #12263a 0%, #070d16 70%); background-attachment: fixed; }
+.gp-site { background: transparent; color: var(--gp-cream); overflow: clip; }
+.gp-site > main, .gp-footer { position: relative; z-index: 1; }
+.gp-morph-scene {
+  position: fixed; inset: 0; width: auto; height: auto; top: 0; right: 0;
+  z-index: 0; pointer-events: none; opacity: 0; transition: opacity 1.2s ease;
+}
+.gp-morph-scene.is-ready { opacity: 1; }
+.gp-morph-canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+
+.gp-hero, .gp-hero.gp-grid, .gp-about, .gp-about.gp-grid, .gp-ventures, .gp-advisory, .gp-advisory.gp-grid,
+.gp-process, .gp-process.gp-grid, .gp-apply, .gp-apply.gp-grid, .gp-paper, .gp-sky {
+  background: transparent !important;
+}
+.gp-about::before, .gp-advisory::before { display: none; }
+.gp-hero-title, .gp-heading { text-shadow: 0 2px 40px rgba(4,8,14,.45); }
+
+.gp-ventures, .gp-process { color: var(--gp-cream); }
+.gp-ventures .gp-heading em, .gp-process .gp-heading em, .gp-step-symbol { color: var(--gp-amber); }
+.gp-ventures .gp-section-description, .gp-process .gp-section-description { color: rgba(245,242,233,.7); }
+.gp-venture-card { background: transparent; border-top: 1px solid rgba(245,242,233,.22); padding-top: 4px; }
+.gp-venture-card p, .gp-process-step p { color: rgba(245,242,233,.66); }
+.gp-process-step { border-top-color: rgba(245,242,233,.28); }
+.gp-step-line { background: rgba(245,242,233,.14); }
+.gp-step-line:after { background: var(--gp-amber); }
+.gp-apply .gp-heading em { color: var(--gp-amber); }
+.gp-apply-button { background: var(--gp-amber); color: #172332; }
+.gp-apply-button:hover { background: #f0c387; color: #172332; }
+.gp-apply-mark { color: rgba(255,255,255,.05); }
+.gp-footer { background: transparent; border-top: 1px solid rgba(245,242,233,.12); }
+
+@media (max-width: 700px) {
+  .gp-morph-scene { width: auto; height: auto; min-height: 0; top: 0; }
+}

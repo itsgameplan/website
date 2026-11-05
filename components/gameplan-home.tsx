@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { ArrowUpRight, Menu, Volume2, VolumeX, X } from "lucide-react";
 import { SmoothScroll } from "@/components/ui/smooth-scroll";
 import dynamic from "next/dynamic";
@@ -17,7 +17,6 @@ const MorphingParticleScene = dynamic(() => import("@/components/ui/morphing-par
 
 export function GameplanHome({ locale, t }: { locale: Locale; t: Dictionary }) {
   const [active, setActive] = useState(0);
-  const formLabels = useMemo(() => [t.formOrigin, t.formSports, t.formLoader, t.formVault] as const, [t]);
   const [menuOpen, setMenuOpen] = useState(false);
   const [soundOn, setSoundOn] = useState(false);
   const [replayKey, setReplayKey] = useState(0);
@@ -65,7 +64,7 @@ export function GameplanHome({ locale, t }: { locale: Locale; t: Dictionary }) {
   return <div className={`gp-site ${locale === "ar" ? "gp-ar" : ""}`}>
     <SmoothScroll />
     <CrosshairCursor tapLabel={t.tap} />
-    <header className={`gp-header ${active === 2 || active === 4 ? "gp-header-dark" : ""}`}>
+    <header className="gp-header">
       <button className="gp-logo" onClick={() => navClick("home")} aria-label={t.backToTop} data-cursor={t.top}>
         <img src="/gameplan-logo-white.png" alt="Gameplan" onError={(e) => { e.currentTarget.style.display = "none"; e.currentTarget.nextElementSibling?.classList.add("gp-logo-fallback-show"); }} />
         <span className="gp-logo-fallback">GAMEPLAN<span className="gp-logo-dot">.</span></span>
@@ -87,7 +86,7 @@ export function GameplanHome({ locale, t }: { locale: Locale; t: Dictionary }) {
       </div>}
     </header>
 
-    <aside className={`gp-meter ${active === 2 || active === 4 ? "gp-meter-dark" : "gp-meter-light"}`} aria-label={t.chapterProgress}>
+    <aside className="gp-meter gp-meter-light" aria-label={t.chapterProgress}>
       <span className="gp-meter-caption">GP / 0{active + 1}</span>
       <div className="gp-meter-track">
         {chapters.map((id, index) => <button key={id} className={`gp-meter-tick ${index <= active ? "is-passed" : ""} ${index === active ? "is-active" : ""}`}
@@ -96,7 +95,7 @@ export function GameplanHome({ locale, t }: { locale: Locale; t: Dictionary }) {
       <span className="gp-meter-caption">0{chapters.length}</span>
     </aside>
 
-    <MorphingParticleScene labels={formLabels} hoverHint={t.formHint} />
+    <MorphingParticleScene />
     <main>
       <div id="gp-morph-track" className="gp-morph-track">
         <HeroSection t={t} onNavigate={navClick} replayKey={replayKey} />
