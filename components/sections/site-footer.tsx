@@ -4,9 +4,8 @@ import { CONTACT_EMAIL, pagePath } from "@/lib/site-links";
 
 // Placeholder profiles — swap in the real ones.
 const SOCIALS = [
-  { label: "Instagram", href: "#" },
-  { label: "LinkedIn", href: "#" },
-  { label: "X", href: "#" },
+  { label: "Instagram", href: "https://www.instagram.com/gameeplan/" },
+  { label: "LinkedIn", href: "https://www.linkedin.com/company/gameeplan/posts/?feedView=all" },
 ];
 
 /**
