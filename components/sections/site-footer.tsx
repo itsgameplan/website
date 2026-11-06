@@ -1,21 +1,22 @@
 import { ArrowUpRight, ArrowUp } from "lucide-react";
 import { chapters, type Chapter, type Dictionary, type Locale } from "@/i18n/translations";
+import { CONTACT_EMAIL, pagePath } from "@/lib/site-links";
 
-// Placeholder destinations — swap in the real addresses and profiles.
-const CONTACT_EMAIL = "hello@gameplan.example";
+// Placeholder profiles — swap in the real ones.
 const SOCIALS = [
   { label: "Instagram", href: "#" },
   { label: "LinkedIn", href: "#" },
   { label: "X", href: "#" },
 ];
-const DOOR_LINKS = { venture: "#", advisory: "#" };
 
 /**
  * Site footer. Carries the last chapter id ("apply") so the chapter menu, the
  * progress meter and the background palette all end on it.
  */
-export function SiteFooter({ t, locale, onNavigate, onReplay }: {
+export function SiteFooter({ t, locale, onNavigate, onReplay, langHref }: {
   t: Dictionary; locale: Locale; onNavigate: (id: Chapter) => void; onReplay: () => void;
+  /** where the language switch goes (defaults to the other home page) */
+  langHref?: string;
 }) {
   const explore = chapters.filter((id) => id !== "home" && id !== "apply");
   return (
@@ -34,8 +35,9 @@ export function SiteFooter({ t, locale, onNavigate, onReplay }: {
         </nav>
         <div className="gp-footer-col">
           <span className="gp-mono">{t.footerWork}</span>
-          <a href={DOOR_LINKS.venture}>{t.doorOneTitle}</a>
-          <a href={DOOR_LINKS.advisory}>{t.doorTwoTitle}</a>
+          <a href={pagePath(locale, "venture")}>{t.doorOneTitle}</a>
+          <a href={pagePath(locale, "advisory")}>{t.doorTwoTitle}</a>
+          <a href={pagePath(locale, "contact")}>{t.apply}</a>
         </div>
         <div className="gp-footer-col">
           <span className="gp-mono">{t.footerFollow}</span>
@@ -47,7 +49,7 @@ export function SiteFooter({ t, locale, onNavigate, onReplay }: {
         <span>© GAMEPLAN 2026 · {t.footerRights}</span>
         <span className="gp-footer-tag">{t.footer}</span>
         <div className="gp-footer-actions">
-          <a href={locale === "en" ? "/ar" : "/en"} hrefLang={locale === "en" ? "ar" : "en"}>{locale === "en" ? "العربية" : "English"}</a>
+          <a href={langHref ?? (locale === "en" ? "/ar" : "/en")} hrefLang={locale === "en" ? "ar" : "en"}>{locale === "en" ? "العربية" : "English"}</a>
           <button onClick={() => onNavigate("home")}>{t.footerTop}<ArrowUp size={13}/></button>
           <button onClick={onReplay}>{t.replay} ↺</button>
         </div>

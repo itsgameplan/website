@@ -4,6 +4,7 @@ import { Geist, Geist_Mono } from "next/font/google";
 import { dictionaries, hasLocale, locales } from "@/i18n/translations";
 import "../globals.css";
 import "../gameplan.css";
+import "../pages.css";
 
 const geistSans = Geist({ variable: "--font-geist-sans", subsets: ["latin"] });
 const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"] });

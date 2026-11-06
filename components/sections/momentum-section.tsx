@@ -44,7 +44,6 @@ export function MomentumSection({ t }: { t: Dictionary }) {
     <section ref={ref} id="momentum" className="gp-momentum">
       <div className="gp-momentum-sticky">
         <div className="gp-momentum-copy">
-          <Reveal><div className="gp-eyebrow"><span className="gp-red-square"/>{t.momentumTag}</div></Reveal>
           <Reveal delay={80}><h2 className="gp-display gp-heading">{t.momentumTitle}<br/><em>{t.momentumAccent}</em></h2></Reveal>
           <Reveal delay={160}><p className="gp-momentum-desc">{t.momentumDesc}</p></Reveal>
           <Reveal delay={220}>

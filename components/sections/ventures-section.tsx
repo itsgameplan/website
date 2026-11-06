@@ -14,7 +14,6 @@ export function VenturesSection({ t }: { t: Dictionary; }) {
       <section id="ventures" className="gp-ventures gp-pinned-section">
         <div id="gp-pin-loader" className="gp-pin-layer gp-section">
           <div className="gp-section-inner">
-            <div className="gp-pin-item gp-eyebrow" style={item(0)}><span className="gp-red-square"/>{t.venturesTag}</div>
             <div className="gp-section-split">
               <h2 className="gp-display gp-heading">
                 <span className="gp-pin-item" style={item(1)}>{t.venturesTitle}</span>

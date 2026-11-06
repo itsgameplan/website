@@ -285,6 +285,26 @@ function sachetGeometry() {
   return g;
 }
 
+/**
+ * A slice of the sachet between x0 and x1 (in sachet space), with the artwork mapped as on the
+ * whole sachet. Used to split the pouring sachet into its body and the strip that tears off.
+ * The slice is shifted by -origin so it can be hinged about that point.
+ */
+function sachetSlice(x0: number, x1: number, origin: [number, number] = [0, 0]) {
+  const g = new THREE.PlaneGeometry(x1 - x0, SACHET_H, Math.max(2, Math.round(32 * (x1 - x0) / SACHET_W)), 4);
+  const pos = g.attributes.position as THREE.BufferAttribute;
+  const uv = g.attributes.uv as THREE.BufferAttribute;
+  for (let i = 0; i < pos.count; i++) {
+    const x = pos.getX(i) + (x0 + x1) / 2;
+    const y = pos.getY(i);
+    uv.setX(i, (x + SACHET_W / 2) / SACHET_W);
+    pos.setXYZ(i, x - origin[0], y - origin[1], sachetPillow(x, y));
+  }
+  g.computeVertexNormals();
+  return g;
+}
+const TEAR_X = SACHET_W / 2 - 0.17; // where the pouring sachet is torn open (its +x end comes off)
+
 const WATER_CLEAR = new THREE.Color(0.74, 0.86, 0.96);
 const WATER_PINK = new THREE.Color(0.93, 0.4, 0.6);
 
@@ -314,10 +334,25 @@ export function createMomentumStage(renderer: THREE.WebGLRenderer, opts: { mirro
   /* sachets — real packaging artwork */
   const sachetGeo = sachetGeometry();
   disposables.push(sachetGeo);
+  // the pouring sachet is two pieces: its body and the end strip that tears off before the pour
+  const bodyGeo = sachetSlice(-SACHET_W / 2, TEAR_X);
+  const stripGeo = sachetSlice(TEAR_X, SACHET_W / 2, [TEAR_X, -SACHET_H / 2]); // hinged at one end of the cut
+  disposables.push(bodyGeo, stripGeo);
+  let strip: THREE.Mesh | null = null;
+  let stripMat: THREE.MeshBasicMaterial | null = null;
   const sachets = SACHETS.map((d) => {
-    const mat = dissolveBasic(new THREE.MeshBasicMaterial({ map: load(`/momentum/sachet-${d.file}.png`), toneMapped: false, transparent: true, alphaTest: 0.4, side: THREE.DoubleSide }), reveal, glow);
+    const map = load(`/momentum/sachet-${d.file}.png`);
+    const mat = dissolveBasic(new THREE.MeshBasicMaterial({ map, toneMapped: false, transparent: true, alphaTest: 0.4, side: THREE.DoubleSide }), reveal, glow);
     disposables.push(mat);
-    const mesh = new THREE.Mesh(sachetGeo, mat);
+    const mesh = new THREE.Mesh(d.pourer ? bodyGeo : sachetGeo, mat);
+    if (d.pourer) {
+      stripMat = dissolveBasic(new THREE.MeshBasicMaterial({ map, toneMapped: false, transparent: true, alphaTest: 0.05, side: THREE.DoubleSide }), reveal, glow);
+      disposables.push(stripMat);
+      strip = new THREE.Mesh(stripGeo, stripMat);
+      strip.renderOrder = 4;
+      strip.position.set(TEAR_X, -SACHET_H / 2, 0);
+      mesh.add(strip);
+    }
     mesh.renderOrder = 4;
     group.add(mesh);
     // right-to-left layouts: the floating sachets swap sides so they keep clear of the copy (the pourer keeps its path)
@@ -397,7 +432,7 @@ export function createMomentumStage(renderer: THREE.WebGLRenderer, opts: { mirro
   const zAxis = new THREE.Vector3(0, 0, 1);
   const euler = new THREE.Euler();
   const tmpPos = new THREE.Vector3();
-  const tipLocal = new THREE.Vector3(SACHET_W * 0.49, 0, 0);
+  const tipLocal = new THREE.Vector3(TEAR_X - 0.01, 0, 0); // the torn edge
 
   /**
    * reveal: 0 = only particles, 1 = fully solid. The scene owns the group's
@@ -409,14 +444,29 @@ export function createMomentumStage(renderer: THREE.WebGLRenderer, opts: { mirro
     group.visible = r > 0.002;
     const mp = clamp(progress);
 
-    // 0 → .26 sachet travels over the glass and tips; powder only flows once it is in place (.28),
-    // the water changes colour while it pours (.30 → .62), and the flow stops when the colour is done (.62 → .66)
-    const approach = smooth(mp / 0.26);
-    const retreat = smooth((mp - 0.82) / 0.18);
+    // 0 → .22 sachet travels over the glass and tips; .22 → .36 its end is torn off; the powder
+    // flows .36 → .6 while the water changes colour (.38 → .58); then the sachet drifts back (.75 → .93)
+    const approach = smooth(mp / 0.22);
+    const tear = smooth((mp - 0.22) / 0.14);
+    const retreat = smooth((mp - 0.75) / 0.18);
     const toPour = approach * (1 - retreat);
-    const pour = smooth((mp - 0.28) / 0.04) * (1 - smooth((mp - 0.62) / 0.04));
-    const tint = smooth((mp - 0.3) / 0.32);
-    const cloud = smooth((mp - 0.3) / 0.08) * (1 - smooth((mp - 0.6) / 0.25));
+    const pour = smooth((mp - 0.36) / 0.03) * (1 - smooth((mp - 0.6) / 0.04));
+    const tint = smooth((mp - 0.38) / 0.2);
+    const cloud = smooth((mp - 0.38) / 0.06) * (1 - smooth((mp - 0.56) / 0.2));
+
+    // the tear: the strip peels open from one edge (hinged at the other end of the cut), then rips
+    // free and flicks away up and out of the pour, fading as it goes
+    if (strip && stripMat) {
+      const st = strip as THREE.Mesh;
+      const sm = stripMat as THREE.MeshBasicMaterial;
+      const peel = smooth(tear / 0.55);
+      const fly = smooth((tear - 0.5) / 0.5);
+      st.position.set(TEAR_X + fly * 0.35, -SACHET_H / 2 - fly * 0.95, fly * 0.45);
+      st.rotation.set(fly * 0.5, fly * 0.7, -peel * 0.5 - fly * 1.7);
+      const fade = smooth((tear - 0.72) / 0.28);
+      st.visible = fade < 0.995;
+      sm.opacity = 1 - fade;
+    }
 
     logo.position.y = LOGO_POS[1] + Math.sin(time * 0.4) * 0.04;
 

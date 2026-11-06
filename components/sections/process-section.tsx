@@ -1,20 +1,17 @@
-import type { Dictionary } from "@/i18n/translations";
+import type { Dictionary, Locale } from "@/i18n/translations";
+import { pagePath } from "@/lib/site-links";
 import { ArrowUpRight } from "lucide-react";
 import { Reveal } from "@/components/ui/reveal";
 
-// Placeholder destinations — swap in the real links for each door.
-const DOOR_LINKS = { venture: "#", advisory: "#" };
-
 /** "Your turn": two doors — join the venture program, or work with Gameplan advisory. */
-export function ProcessSection({ t }: { t: Dictionary; }) {
+export function ProcessSection({ t, locale }: { t: Dictionary; locale: Locale }) {
   const doors = [
-    { n: "01", title: t.doorOneTitle, desc: t.doorOneDesc, href: DOOR_LINKS.venture, tone: "gold" },
-    { n: "02", title: t.doorTwoTitle, desc: t.doorTwoDesc, href: DOOR_LINKS.advisory, tone: "glass" },
+    { n: "01", title: t.doorOneTitle, desc: t.doorOneDesc, href: pagePath(locale, "venture"), tone: "gold" },
+    { n: "02", title: t.doorTwoTitle, desc: t.doorTwoDesc, href: pagePath(locale, "advisory"), tone: "glass" },
   ];
   return (
       <section id="process" className="gp-section gp-turn">
         <div className="gp-section-inner">
-          <Reveal><div className="gp-turn-badge gp-mono"><span className="gp-red-square"/>{t.processTag}</div></Reveal>
           <Reveal delay={80}><h2 className="gp-display gp-turn-title">{t.processTitle}</h2></Reveal>
           <Reveal delay={140}><p className="gp-turn-sub">{t.processDesc}</p></Reveal>
           <div className="gp-doors">

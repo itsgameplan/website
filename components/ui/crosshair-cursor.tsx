@@ -9,9 +9,9 @@ export function CrosshairCursor({ tapLabel = "TAP" }: { tapLabel?: string }) {
 
   useEffect(() => {
     const pointer = window.matchMedia("(pointer: fine)");
-    const motion = window.matchMedia("(prefers-reduced-motion: reduce)");
     const move = (event: PointerEvent) => {
-      setEnabled(pointer.matches && !motion.matches);
+      // the system cursor is hidden site-wide on fine pointers, so the crosshair always shows there
+      setEnabled(pointer.matches);
       setPos({ x: event.clientX, y: event.clientY });
       const target = event.target instanceof Element ? event.target.closest("a,button,[data-cursor]") : null;
       setHint(target?.getAttribute("data-cursor") || (target ? tapLabel : ""));

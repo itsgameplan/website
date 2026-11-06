@@ -3,7 +3,7 @@ import { ArrowUpRight } from "lucide-react";
 import type { CSSProperties } from "react";
 
 // Placeholder destinations — swap in the real store and website links.
-const ASL_LINKS = { appStore: "#", googlePlay: "#", website: "#" };
+const ASL_LINKS = { appStore: "#", googlePlay: "#", website: "https://aslbullion.com/" };
 
 const AppleGlyph = () => (
   <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" fill="currentColor">
@@ -31,7 +31,6 @@ export function AdvisorySection({ t }: { t: Dictionary; }) {
       <section id="advisory" className="gp-advisory gp-pinned-section">
         <div id="gp-pin-vault" className="gp-pin-layer gp-section">
           <div className="gp-section-inner">
-            <div className="gp-pin-item gp-eyebrow gp-eyebrow-light" style={item(0)}><span className="gp-white-square"/>{t.advisoryTag}</div>
             <h2 className="gp-display gp-heading gp-heading-white">
               <span className="gp-pin-item" style={item(1)}>{t.advisoryTitle}</span>
               <em className="gp-pin-item" style={item(2)}>{t.advisoryAccent}</em>
@@ -39,14 +38,33 @@ export function AdvisorySection({ t }: { t: Dictionary; }) {
             <div className="gp-advisory-lower">
               <p className="gp-pin-item gp-advisory-description" style={item(3)}>{t.advisoryDesc}</p>
               <div className="gp-pin-item gp-asl-actions" style={item(4)}>
-                <a className="gp-store-btn" href={ASL_LINKS.appStore} target="_blank" rel="noopener noreferrer">
-                  <AppleGlyph /><span><small>{t.aslAppStoreSmall}</small>{t.aslAppStore}</span>
-                </a>
-                <a className="gp-store-btn" href={ASL_LINKS.googlePlay} target="_blank" rel="noopener noreferrer">
-                  <PlayGlyph /><span><small>{t.aslPlaySmall}</small>{t.aslPlay}</span>
-                </a>
-                <a className="gp-asl-web" href={ASL_LINKS.website} target="_blank" rel="noopener noreferrer">
-                  {t.aslWebsite}<ArrowUpRight size={16}/>
+                {/* Apple App Store - Disabled */}
+                <div className="gp-store-btn gp-store-btn--disabled">
+                  <AppleGlyph />
+                  <span>
+                    <small>{t.aslAppStoreSmall}</small>
+                    {t.aslAppStore}
+                  </span>
+                </div>
+                
+                {/* Google Play - Disabled */}
+                <div className="gp-store-btn gp-store-btn--disabled">
+                  <PlayGlyph />
+                  <span>
+                    <small>{t.aslPlaySmall}</small>
+                    {t.aslPlay}
+                  </span>
+                </div>
+                
+                {/* Website - Active */}
+                <a
+                  className="gp-asl-web"
+                  href={ASL_LINKS.website}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  {t.aslWebsite}
+                  <ArrowUpRight size={16} />
                 </a>
               </div>
               <div className="gp-advisory-list">{[t.advisoryOne, t.advisoryTwo, t.advisoryThree].map((label, index) =>

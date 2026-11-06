@@ -13,6 +13,10 @@ import { MomentumSection } from "@/components/sections/momentum-section";
 import { ProcessSection } from "@/components/sections/process-section";
 import { SiteFooter } from "@/components/sections/site-footer";
 import { chapters, type Chapter, type Dictionary, type Locale } from "@/i18n/translations";
+import { programs } from "@/i18n/programs";
+import { pagePath, type SitePage } from "@/lib/site-links";
+
+const NAV_PAGES: SitePage[] = ["venture", "advisory", "contact"];
 
 const MorphingParticleScene = dynamic(() => import("@/components/ui/morphing-particle-scene").then((mod) => mod.MorphingParticleScene), { ssr: false });
 
@@ -75,6 +79,7 @@ export function GameplanHome({ locale, t }: { locale: Locale; t: Dictionary }) {
         <span className="gp-logo-fallback">GAMEPLAN<span className="gp-logo-dot">.</span></span>
       </button>
       <nav className="gp-nav" aria-label={t.primaryNavigation}>
+        {NAV_PAGES.map((k) => <a key={k} className="gp-nav-link gp-nav-page" href={pagePath(locale, k)}>{programs[locale].nav[k]}</a>)}
         <button className="gp-nav-link gp-skip" onClick={() => navClick("process")}>({t.skip})</button>
         <button className="gp-nav-link" onClick={() => setMenuOpen(!menuOpen)} aria-expanded={menuOpen} aria-controls="gp-chapter-menu">
           ({t.menu}) {menuOpen ? <X size={14}/> : <Menu size={14}/>}
@@ -88,6 +93,7 @@ export function GameplanHome({ locale, t }: { locale: Locale; t: Dictionary }) {
       </nav>
       {menuOpen && <div id="gp-chapter-menu" className="gp-menu">
         {chapters.map((id, index) => <button key={id} onClick={() => navClick(id)}><span>0{index + 1}</span>{t[id]}<ArrowUpRight size={18}/></button>)}
+        {NAV_PAGES.map((k) => <a key={k} className="gp-menu-page" href={pagePath(locale, k)}><span>→</span>{programs[locale].nav[k]}<ArrowUpRight size={18}/></a>)}
       </div>}
     </header>
 
@@ -109,7 +115,7 @@ export function GameplanHome({ locale, t }: { locale: Locale; t: Dictionary }) {
       </div>
       <MomentumSection t={t} />
       <AboutSection t={t} onNavigate={navClick} />
-      <ProcessSection t={t} />
+      <ProcessSection t={t} locale={locale} />
     </main>
     <SiteFooter t={t} locale={locale} onNavigate={navClick} onReplay={() => { jump("home"); setReplayKey((k) => k + 1); }} />
     {reducedMotion && <button className="gp-replay-floating" onClick={() => setReplayKey((k) => k + 1)}>{t.replay}</button>}

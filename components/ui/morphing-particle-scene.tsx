@@ -2,7 +2,7 @@
 
 import { useEffect, useRef } from "react";
 import * as THREE from "three";
-import { createMorphTargets, VAULT_BARS, type FormName } from "@/lib/morph-shapes";
+import { createMorphTargets, LOADER_PIVOT, VAULT_BARS, type FormName } from "@/lib/morph-shapes";
 import { drawSurveyMap } from "@/lib/survey-map";
 import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
 import { createMomentumStage, sampleMomentumPoints } from "@/components/ui/momentum-stage";
@@ -33,11 +33,13 @@ const POSE = [
   { rx: 0.2, ry: -0.62, x: -0.1, scale: 1.0 }, // loader
   { rx: 0.06, ry: 0.0, x: 0, scale: 1.08 },    // vault
 ];
+/** Middle of the bucket mouth, in the loader design space (the point the loader drives at the camera). */
+const BUCKET_MOUTH: [number, number] = [1.98, -0.2];
 const SPORTS_POSE = { rx: 0.1, ry: -0.28, x: 0.44, scale: 0.92 }; // balls, on the right
 
 /** Void palette per section (same order as SECTION_IDS): gradient top, gradient bottom, light-beam colour. */
 const PALETTES: [number, number, number][] = [
-  [0x10263b, 0x05090f, 0xf2c27c], // home — midnight, warm gold light
+  [0x10263b, 0x05090f, 0x2f5fbf], // home — midnight, navy blue light
   [0x1f1d19, 0x0c0b09, 0xf2b632], // ventures (Cairo Tech) — charcoal survey map, site-yellow light
   [0x17130c, 0x050403, 0xe8b45a], // advisory (vault, ASL) — black lacquer, art deco gold
   [0x1b2a4c, 0x070a16, 0xa9c2f0], // momentum — periwinkle void, soft blue light
@@ -640,6 +642,18 @@ export function MorphingParticleScene() {
       bgUniforms.uLogoRect.value.set(x, y, w, h);
     }
 
+    /* ---- loader → gold bar: a veil in the loader paint closes over the screen as the bucket fills it ---- */
+    const veilEl = document.createElement("div");
+    veilEl.className = "gp-morph-veil";
+    container.appendChild(veilEl);
+    let veilLast = -1;
+    function setVeil(v: number) {
+      const q = Math.round(v * 1000) / 1000;
+      if (q === veilLast) return;
+      veilLast = q;
+      veilEl.style.opacity = String(q);
+    }
+
     /* ---- pinned section copy (loader, vault) driven by the 3D timeline ---- */
     const pinLoader = document.getElementById("gp-pin-loader");
     const pinVault = document.getElementById("gp-pin-vault");
@@ -701,7 +715,7 @@ export function MorphingParticleScene() {
     const rimLight = new THREE.DirectionalLight(0xbfd6ff, 1.4);
     rimLight.position.set(5, 2, -4);
     scene.add(keyLight, rimLight);
-    const camera = new THREE.PerspectiveCamera(32, 1, 0.05, 100);
+    const camera = new THREE.PerspectiveCamera(32, 1, 0.01, 100);
     const vaultBars = new THREE.Vector3(...targets.vaultBars);
     // top face of the top (hallmarked) gold bar, in the vault's normalised space
     const vf = targets.frames.vault;
@@ -711,6 +725,12 @@ export function MorphingParticleScene() {
     const overheadPos = new THREE.Vector3();
     const overheadOffset = new THREE.Vector3(0, 1.18, 0.001); // straight above the bar, inside the vault
     const upInto = new THREE.Vector3(0, 0, -1);
+    // centre of the hallmark emblem: 70px above the middle of the 840px-tall, 0.56-deep bar face (towards -z)
+    const emblemOffset = new THREE.Vector3(0, 0, -(70 / 840) * 0.56 * vf.scale);
+    const emblemWorld = new THREE.Vector3();
+    const zoomLook = new THREE.Vector3();
+    const zoomUp = new THREE.Vector3();
+    const ZOOM_START = 0.07; // camera height above the emblem centre when the veil lifts
 
     renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.75));
     renderer.domElement.setAttribute("aria-hidden", "true");
@@ -769,12 +789,15 @@ export function MorphingParticleScene() {
       const vh = viewH;
       const A = anchors;
       // fiber stream → loader → vault: each morph plays while its section rises from 75% to 25% of the viewport
-      let stage = 0;
-      for (const k of [LOADER, VAULT]) stage += span(y, A[k] - vh * 0.75, A[k] - vh * 0.25);
+      // (the loader → vault hand-over is not a particle morph any more: see `cut`)
+      const stage = span(y, A[LOADER] - vh * 0.75, A[LOADER] - vh * 0.25);
       // per-form motion, active for the whole time each form is on screen
       const local0 = span(y, 0, A[LOADER] - vh * 0.45);                    // stream energises
-      const local2 = span(y, A[LOADER] - vh * 0.3, A[VAULT] - vh * 0.6);  // arm lifts, camera pans
-      const local3 = span(y, A[VAULT] - vh * 0.3, trackEnd - vh * 0.7);   // vault opens, camera flies in
+      // the loader lifts its arm, turns and drives at the screen until it fills it; the gold bar follows
+      const cut = span(y, A[VAULT] - vh * 0.85, A[VAULT] - vh * 0.1);
+      // the vault plays backwards: from the top-down gold bar out of the vault, door shuts and locks
+      // (local3 keeps its old meaning — 0 locked/outside, 1 overhead — so it runs 1 → 0 here)
+      const local3 = 1 - span(y, A[VAULT] + vh * 0.05, trackEnd - vh * 1.1);
       let tone = 0;
       for (let k = 1; k < SECTION_IDS.length; k++) tone += span(y, A[k] - vh * 0.75, A[k] - vh * 0.05);
 
@@ -796,7 +819,7 @@ export function MorphingParticleScene() {
         * (1 - span(y, sE - vh * 1.3, sE - vh * 1.1));            // …and break back into particles at the end
       const local1 = span(y, sA + vh * 0.05, sE - vh * 1.32);     // balls drift apart
       const disperse = span(y, sE - vh * 1.15, sE - vh * 0.75);   // finale: the particles scatter and vanish
-      return { stage, local0, local1, local2, local3, tone, toGlass, mReveal, mProgress, toSports, sReveal, disperse, homeBack, y };
+      return { stage, cut, local0, local1, local3, tone, toGlass, mReveal, mProgress, toSports, sReveal, disperse, homeBack, y };
     }
 
     /* ---- pointer ---- */
@@ -833,6 +856,9 @@ export function MorphingParticleScene() {
     const barsWorld = new THREE.Vector3();
     const dollyPos = new THREE.Vector3();
     const dollyOffset = new THREE.Vector3(0, 0.3, 2.15); // where the camera ends up, relative to the bars
+    const bucketWorld = new THREE.Vector3();
+    const driveCam = new THREE.Vector3();
+    const driveOffset = new THREE.Vector3();
     const homePos = new THREE.Vector3();
     const homeLook = new THREE.Vector3();
     const focusM = new THREE.Vector3();
@@ -867,8 +893,8 @@ export function MorphingParticleScene() {
         state.stage = damp(state.stage, target.stage, 4.2, dt);
         state.local0 = damp(state.local0, target.local0, 5, dt);
         state.local1 = damp(state.local1, target.local1, 5, dt);
-        state.local2 = damp(state.local2, target.local2, 5, dt);
         state.local3 = damp(state.local3, target.local3, 5, dt);
+        state.cut = damp(state.cut, target.cut, 5, dt);
         state.mReveal = damp(state.mReveal, target.mReveal, 5, dt);
         state.disperse = damp(state.disperse, target.disperse, 5, dt);
         state.mProgress = damp(state.mProgress, target.mProgress, 5, dt);
@@ -886,7 +912,14 @@ export function MorphingParticleScene() {
       }
 
       const idle = reducedMotion ? 0 : 1;
-      const s = clamp(state.stage, 0, 2);
+      // loader → gold bar (cut): 0→.6 the loader lifts its arm, turns and drives at the screen while the
+      // veil closes over it (.42→.6); the vault swaps in behind the veil (.6→.64); the veil lifts on the
+      // centre of the hallmark emblem (.64→.76) and the camera zooms out to the whole bar (.66→1)
+      const cut = clamp(state.cut);
+      const drive = smooth(clamp(cut / 0.6));
+      const veil = smooth(clamp((cut - 0.42) / 0.18)) * (1 - smooth(clamp((cut - 0.64) / 0.12)));
+      const s = clamp(state.stage, 0, 1) + smooth(clamp((cut - 0.6) / 0.04));
+      const zoom = smooth(clamp((cut - 0.66) / 0.34));
       const i = Math.min(1, Math.floor(s));
       const f = s - i;
       const eased = smooth(clamp((f - 0.1) / 0.8));
@@ -897,24 +930,31 @@ export function MorphingParticleScene() {
       // the balls take over the model's framing once Momentum hands over to them
       const sp = smooth(clamp(state.toSports));
 
-      // vault: the camera flies in through the opening door towards the gold
-      // vault timeline (local3): handle spins 0→.18, door opens .15→.45, camera flies in .1→.5,
-      // then rises over the gold and tilts down to a top-down view of the hallmarked bar .55→.95
+      // vault timeline (local3, played from 1 down to 0 as you scroll): the camera starts straight above
+      // the hallmarked bar (.95→.55 it drops back from it), backs out of the vault (.5→.1) as the door
+      // swings shut (.45→.15), and the handle spins to lock it (.18→0)
       const dolly = smooth(clamp((state.local3 - 0.1) / 0.4)) * w[2];
       const overhead = smooth(clamp((state.local3 - 0.55) / 0.4)) * w[2];
-      const calm = 1 - dolly * (1 - back); // hold the vault steady while the camera is inside
+      const driving = drive * w[1];
+      // hold the object steady while the camera is inside the vault or the loader is driving at it
+      const calm = 1 - Math.max(dolly * (1 - back), driving);
 
       // pinned copy follows the objects: loader copy rises in as the loader forms and leaves as it
-      // morphs into the vault; vault copy rises in with the vault and leaves as the camera goes inside
+      // starts its drive; vault copy rises in once the camera is out and leaves as Momentum takes over
       const loaderIn = smooth(clamp((s - 0.62) / 0.38));
-      const loaderOut = smooth(clamp((s - 1.04) / 0.3));
+      const loaderOut = smooth(clamp(cut / 0.22));
       setPin(pinLoader, loaderIn, loaderOut);
-      setPin(pinVault, smooth(clamp((s - 1.62) / 0.38)), smooth(clamp((dolly - 0.4) / 0.3)));
+      setPin(pinVault, smooth(clamp((s - 1.62) / 0.38)) * (1 - smooth(clamp((dolly - 0.05) / 0.3))), smooth(clamp(state.toGlass / 0.35)));
+      setVeil(veil);
       document.documentElement.classList.toggle("gp-loader-on", loaderIn > 0.85 && loaderOut < 0.4);
 
       // scroll-linked turning while each form plays its motion
       const twirl = Math.sin(Math.PI * eased) * 0.9;
-      const baseRy = lerp(a.ry, b.ry, eased) + twirl + w[1] * state.local2 * 0.25;
+      // the loader swings round until its bucket points straight at the screen
+      const turn = smooth(clamp(cut / 0.45)) * w[1];
+      const baseRy = lerp(lerp(a.ry, b.ry, eased) + twirl, -Math.PI / 2, turn);
+      // the arm lifts in the same move (no separate lift beforehand)
+      const lift = smooth(clamp(cut / 0.5)) * 0.95 * w[1];
       const ballsRy = SPORTS_POSE.ry * sideSign + state.local1 * 0.5;
       model.rotation.y = lerp(baseRy, ballsRy, sp) + (Math.sin(t * 0.22) * 0.14 * idle + parallaxX * 0.35) * calm;
       model.rotation.x = lerp(lerp(a.rx, b.rx, eased), SPORTS_POSE.rx, sp) + (Math.sin(t * 0.17) * 0.04 * idle + parallaxY * 0.18) * calm;
@@ -925,9 +965,27 @@ export function MorphingParticleScene() {
       model.scale.setScalar(lerp(lerp(a.scale, b.scale, eased) * (1 + w[0] * state.local0 * 0.08), SPORTS_POSE.scale, sp) * (portrait ? 0.86 : 1));
 
       // loader: the camera pans upwards with the lifting arm
-      const pan = smooth(state.local2) * w[1] * halfH * 0.3;
+      const pan = (lift / 0.95) * halfH * 0.15;
       camPos.set(0, pan, camDist);
       camLook.set(0, pan, 0);
+      // the bucket comes at the camera until it fills the screen
+      if (driving > 0.0001) {
+        const ca = Math.cos(lift), sa = Math.sin(lift);
+        const dx = BUCKET_MOUTH[0] - LOADER_PIVOT[0], dy = BUCKET_MOUTH[1] - LOADER_PIVOT[1];
+        const lf = targets.frames.loader;
+        bucketWorld.set(
+          (LOADER_PIVOT[0] + dx * ca - dy * sa - lf.center[0]) * lf.scale,
+          (LOADER_PIVOT[1] + dx * sa + dy * ca - lf.center[1]) * lf.scale,
+          (0 - lf.center[2]) * lf.scale,
+        );
+        model.updateMatrixWorld(true);
+        bucketWorld.applyMatrix4(model.matrixWorld);
+        // stop just short of the bucket's mouth (it overfills the frame there; the veil hides any gap)
+        driveCam.copy(bucketWorld).add(driveOffset.set(0, 0.05, 0.75 * model.scale.x));
+        const ease = driving * driving * (3 - 2 * driving);
+        camPos.lerp(driveCam, ease);
+        camLook.lerp(bucketWorld, Math.min(1, driving * 1.6));
+      }
       if (dolly > 0.0001 && back < 0.9999) {
         // the vault's own framing (before the balls' framing takes over the model)
         dollyFrame.makeRotationFromEuler(dollyEuler.set(lerp(a.rx, b.rx, eased), baseRy, 0));
@@ -939,10 +997,16 @@ export function MorphingParticleScene() {
         // then rise over the stack and tilt down until we look straight down on the hallmarked top bar
         if (overhead > 0.0001) {
           topBarWorld.copy(topBarTop).applyMatrix4(dollyFrame);
-          overheadPos.copy(topBarWorld).add(overheadOffset);
+          // it starts right on the centre of the hallmark emblem and zooms out to the whole bar;
+          // the height grows exponentially so the zoom reads at an even pace
+          emblemWorld.copy(topBarTop).add(emblemOffset).applyMatrix4(dollyFrame);
+          const h = ZOOM_START * Math.pow(overheadOffset.y / ZOOM_START, zoom);
+          const g = (h - ZOOM_START) / (overheadOffset.y - ZOOM_START);
+          zoomLook.copy(emblemWorld).lerp(topBarWorld, g);
+          overheadPos.copy(zoomLook).add(zoomUp.set(0, h, 0.001));
           camPos.lerp(overheadPos, overhead);
           camPos.y += Math.sin(Math.PI * overhead) * 0.18; // a gentle arc as it climbs over the bars
-          camLook.lerp(topBarWorld, overhead);
+          camLook.lerp(zoomLook, overhead);
         }
       }
       // Momentum → balls: the camera returns home as the particles fly out to the balls
@@ -977,7 +1041,7 @@ export function MorphingParticleScene() {
       const sR = smooth(clamp(state.sReveal));
       uniforms.uSolidS.value = sR;
 
-      uniforms.uLocal.value.set(state.local0, state.local1, smooth(state.local2), state.local3);
+      uniforms.uLocal.value.set(state.local0, state.local1, lift / 0.95, state.local3);
       // vault: unlock the handle, then swing the door fully open
       uniforms.uSpin.value = smooth(clamp(state.local3 / 0.18)) * Math.PI * 1.25;
       uniforms.uDoor.value = smooth(clamp((state.local3 - 0.15) / 0.3)) * 1.9;
@@ -995,7 +1059,7 @@ export function MorphingParticleScene() {
       const loaderSolid = settle(1);
       const vaultSolid = settle(2) * (1 - smooth(clamp(state.toGlass / 0.3)));
       uniforms.uSolid.value = Math.max(loaderSolid, vaultSolid);
-      solids.update({ reveal: [sR, loaderSolid, vaultSolid], apart: state.local1, lift: smooth(state.local2) * 0.95, spin: uniforms.uSpin.value, door: uniforms.uDoor.value });
+      solids.update({ reveal: [sR, loaderSolid, vaultSolid], apart: state.local1, lift, spin: uniforms.uSpin.value, door: uniforms.uDoor.value });
 
       applyPalette(state.tone);
       focus.copy(model.position).lerp(momentum.group.getWorldPosition(focusM), Math.max(mP, state.toGlass) * (1 - sp)).project(camera);
@@ -1012,7 +1076,8 @@ export function MorphingParticleScene() {
       uniforms.uQuiet.value = bgUniforms.uDeco.value;
       bgUniforms.uDecoT.value = state.scroll / viewH;
       // the ASL mark shows with the vault section and is gone once the camera is inside the vault
-      updateLogo(bgUniforms.uDeco.value * (1 - smooth(clamp((dolly - 0.2) / 0.4))));
+      // (it waits for the camera to come back out of the vault, and stays clear of the loader drive)
+      updateLogo(bgUniforms.uDeco.value * w[2] * (1 - smooth(clamp((dolly - 0.2) / 0.4))));
       ambientUniforms.uTime.value = t * idle;
       ambientUniforms.uScroll.value = (state.scroll / viewH) * halfH * 0.9;
 
@@ -1052,6 +1117,7 @@ export function MorphingParticleScene() {
       pmrem.dispose();
       renderer.dispose();
       renderer.domElement.remove();
+      veilEl.remove();
       document.documentElement.classList.remove("gp-loader-on");
     };
   }, []);
