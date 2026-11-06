@@ -288,7 +288,7 @@ function sachetGeometry() {
 const WATER_CLEAR = new THREE.Color(0.74, 0.86, 0.96);
 const WATER_PINK = new THREE.Color(0.93, 0.4, 0.6);
 
-export function createMomentumStage(renderer: THREE.WebGLRenderer) {
+export function createMomentumStage(renderer: THREE.WebGLRenderer, opts: { mirror?: boolean } = {}) {
   const group = new THREE.Group();
   group.visible = false;
   const reveal: Reveal = { value: 0 };
@@ -320,7 +320,9 @@ export function createMomentumStage(renderer: THREE.WebGLRenderer) {
     const mesh = new THREE.Mesh(sachetGeo, mat);
     mesh.renderOrder = 4;
     group.add(mesh);
-    return { mesh, base: new THREE.Vector3(...d.base), rot: new THREE.Euler(...d.rot), pourer: d.pourer };
+    // right-to-left layouts: the floating sachets swap sides so they keep clear of the copy (the pourer keeps its path)
+    const flip = opts.mirror && !d.pourer ? -1 : 1;
+    return { mesh, base: new THREE.Vector3(d.base[0] * flip, d.base[1], d.base[2]), rot: new THREE.Euler(d.rot[0], d.rot[1] * flip, d.rot[2] * flip), pourer: d.pourer };
   });
 
   /* water + glass */

@@ -1,21 +1,38 @@
 import type { Dictionary } from "@/i18n/translations";
+import { ArrowUpRight } from "lucide-react";
 import { Reveal } from "@/components/ui/reveal";
 
+// Placeholder destinations — swap in the real links for each door.
+const DOOR_LINKS = { venture: "#", advisory: "#" };
+
+/** "Your turn": two doors — join the venture program, or work with Gameplan advisory. */
 export function ProcessSection({ t }: { t: Dictionary; }) {
+  const doors = [
+    { n: "01", title: t.doorOneTitle, desc: t.doorOneDesc, href: DOOR_LINKS.venture, tone: "gold" },
+    { n: "02", title: t.doorTwoTitle, desc: t.doorTwoDesc, href: DOOR_LINKS.advisory, tone: "glass" },
+  ];
   return (
-      <section id="process" className="gp-section gp-process gp-paper gp-grid">
+      <section id="process" className="gp-section gp-turn">
         <div className="gp-section-inner">
-          <Reveal><div className="gp-eyebrow"><span className="gp-red-square"/>{t.processTag}</div></Reveal>
-          <div className="gp-section-split">
-            <Reveal><h2 className="gp-display gp-heading">{t.processTitle}<br/><em>{t.processAccent}</em></h2></Reveal>
-            <Reveal delay={120}><p className="gp-section-description">{t.processDesc}</p></Reveal>
+          <Reveal><div className="gp-turn-badge gp-mono"><span className="gp-red-square"/>{t.processTag}</div></Reveal>
+          <Reveal delay={80}><h2 className="gp-display gp-turn-title">{t.processTitle}</h2></Reveal>
+          <Reveal delay={140}><p className="gp-turn-sub">{t.processDesc}</p></Reveal>
+          <div className="gp-doors">
+            {doors.map((d, i) => (
+              <Reveal key={d.n} delay={200 + i * 120}>
+                <a className={`gp-door gp-door-${d.tone}`} href={d.href} data-cursor={t.doorEnter}>
+                  <span className="gp-door-frame" aria-hidden="true" />
+                  <span className="gp-door-leaf">
+                    <span className="gp-door-label gp-mono">{t.doorLabel} {d.n}</span>
+                    <span className="gp-door-title gp-display">{d.title}</span>
+                    <span className="gp-door-desc">{d.desc}</span>
+                    <span className="gp-door-enter gp-mono">{t.doorEnter}<ArrowUpRight size={15}/></span>
+                    <span className="gp-door-knob" aria-hidden="true" />
+                  </span>
+                </a>
+              </Reveal>
+            ))}
           </div>
-          <div className="gp-process-grid">{([
-            [t.stepOne,t.stepOneDesc],[t.stepTwo,t.stepTwoDesc],[t.stepThree,t.stepThreeDesc],[t.stepFour,t.stepFourDesc]
-          ]).map(([title,desc], index) => <Reveal key={title} delay={index * 85}><div className="gp-process-step" tabIndex={0}>
-            <div className="gp-step-top"><span>0{index + 1} / 04</span><span className="gp-step-symbol">{["◎","◇","▧","↗"][index]}</span></div>
-            <h3>{title}</h3><p>{desc}</p><div className="gp-step-line"/>
-          </div></Reveal>)}</div>
         </div>
       </section>
   );

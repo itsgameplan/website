@@ -1,16 +1,32 @@
 "use client";
 
 import { useEffect } from "react";
+import type Lenis from "lenis";
 
+declare global {
+  interface Window { __gpLenis?: Lenis }
+}
+
+/**
+ * Inertial smooth scrolling: the page glides and eases to a stop with a little
+ * drag after the wheel/trackpad stops, instead of stepping. Exposed on
+ * window.__gpLenis so in-page navigation can glide the same way.
+ */
 export function SmoothScroll() {
   useEffect(() => {
     if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
-    let lenis: import("lenis").default | undefined;
+    let lenis: Lenis | undefined;
     let frame = 0;
     let active = true;
-    import("lenis").then(({ default: Lenis }) => {
+    import("lenis").then(({ default: LenisCtor }) => {
       if (!active) return;
-      lenis = new Lenis({ duration: 1.25, smoothWheel: true, wheelMultiplier: 0.85, touchMultiplier: 1.05 });
+      lenis = new LenisCtor({
+        lerp: 0.075,          // lower = more glide / drag after you stop
+        smoothWheel: true,
+        wheelMultiplier: 0.9,
+        touchMultiplier: 1.1,
+      });
+      window.__gpLenis = lenis;
       const raf = (time: number) => {
         lenis?.raf(time);
         frame = requestAnimationFrame(raf);
@@ -21,6 +37,7 @@ export function SmoothScroll() {
       active = false;
       cancelAnimationFrame(frame);
       lenis?.destroy();
+      if (window.__gpLenis === lenis) delete window.__gpLenis;
     };
   }, []);
   return null;

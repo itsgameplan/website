@@ -2,15 +2,22 @@
 
 import { useEffect, useRef } from "react";
 import * as THREE from "three";
-import { createMorphTargets, type FormName } from "@/lib/morph-shapes";
+import { createMorphTargets, VAULT_BARS, type FormName } from "@/lib/morph-shapes";
+import { drawSurveyMap } from "@/lib/survey-map";
 import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
 import { createMomentumStage, sampleMomentumPoints } from "@/components/ui/momentum-stage";
 import { createSolidForms } from "@/components/ui/solid-forms";
 
 const FORMS: FormName[] = ["origin", "sports", "loader", "vault"];
-/** Sections that drive the morph (first four), the Momentum stage (fifth) and the background palette (all). */
-const SECTION_IDS = ["home", "about", "ventures", "advisory", "momentum", "process", "apply"];
-const MOMENTUM = 4;
+/**
+ * Scroll story: fiber stream (home) → loader (ventures / Cairo Tech) → vault (advisory)
+ * → Momentum → sport balls (about). All sections also drive the background palette.
+ */
+const SECTION_IDS = ["home", "ventures", "advisory", "momentum", "about", "process", "apply"];
+const LOADER = 1;
+const VAULT = 2;
+const MOMENTUM = 3;
+const SPORTS = 4;
 
 const clamp = (v: number, a = 0, b = 1) => Math.max(a, Math.min(b, v));
 const smooth = (v: number) => v * v * (3 - 2 * v);
@@ -22,19 +29,19 @@ const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
  * positive = right). Portrait screens always centre the object.
  */
 const POSE = [
-  { rx: 0.12, ry: 0.0, x: 0, scale: 1.0 },
-  { rx: 0.1, ry: -0.28, x: 0.44, scale: 0.92 },
-  { rx: 0.2, ry: -0.62, x: 0, scale: 1.0 },
-  { rx: 0.06, ry: 0.0, x: 0, scale: 1.08 },
+  { rx: 0.12, ry: 0.0, x: 0, scale: 1.0 },     // fiber stream
+  { rx: 0.2, ry: -0.62, x: -0.1, scale: 1.0 }, // loader
+  { rx: 0.06, ry: 0.0, x: 0, scale: 1.08 },    // vault
 ];
+const SPORTS_POSE = { rx: 0.1, ry: -0.28, x: 0.44, scale: 0.92 }; // balls, on the right
 
-/** Void palette per section: gradient top, gradient bottom, light-beam colour. */
+/** Void palette per section (same order as SECTION_IDS): gradient top, gradient bottom, light-beam colour. */
 const PALETTES: [number, number, number][] = [
   [0x10263b, 0x05090f, 0xf2c27c], // home — midnight, warm gold light
-  [0x0f2c42, 0x050d16, 0x8ccfff], // about — deep ocean, cool light
-  [0x2b1a0b, 0x0b0704, 0xffb44a], // ventures — umber, amber light
-  [0x121d33, 0x05070d, 0xffd27a], // advisory — ink blue, gold light
+  [0x1f1d19, 0x0c0b09, 0xf2b632], // ventures (Cairo Tech) — charcoal survey map, site-yellow light
+  [0x17130c, 0x050403, 0xe8b45a], // advisory (vault, ASL) — black lacquer, art deco gold
   [0x1b2a4c, 0x070a16, 0xa9c2f0], // momentum — periwinkle void, soft blue light
+  [0x0f2c42, 0x050d16, 0x8ccfff], // about (sport balls) — deep ocean, cool light
   [0x22163a, 0x08060f, 0xc4a2ff], // process — violet void
   [0x3d150b, 0x100503, 0xff8a5a], // apply — ember
 ];
@@ -59,6 +66,16 @@ const backgroundFragment = /* glsl */ `
   uniform float uTime;
   uniform float uScroll;
   uniform float uTone;
+  uniform sampler2D uMap;      // Cairo Tech survey map (R lines, G labels, B grid)
+  uniform vec4 uMapRect;       // section rect on screen: x, y (from top), w, h — fractions of the viewport
+  uniform float uMapOn;
+  uniform float uMapReveal;
+  uniform float uMapLabels;
+  uniform float uDeco;         // vault section art deco weight
+  uniform float uDecoT;        // scroll position driving the art deco motion
+  uniform sampler2D uLogo;     // ASL lockup (white, alpha)
+  uniform vec4 uLogoRect;      // where it sits on screen: x, y (from top), w, h — fractions of the viewport
+  uniform float uLogoAmt;
   varying vec2 vUv;
 
   float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
@@ -106,6 +123,49 @@ const backgroundFragment = /* glsl */ `
     return total * smoothstep(0.0, 0.5, w);
   }
 
+  /* ---- Art deco (vault section): gold line-work that moves with scroll ---- */
+  float decoLine(float d, float w) { float fw = fwidth(d); return 1.0 - smoothstep(w, w + fw * 1.5, abs(d)); }
+  // rectangle with stepped (ziggurat) corners, measured on the mirrored quadrant
+  float steppedRect(vec2 q, vec2 h, float s) {
+    float a = max(q.x - h.x, q.y - h.y + s * 2.0);
+    float b = max(q.x - h.x + s, q.y - h.y + s);
+    float c = max(q.x - h.x + s * 2.0, q.y - h.y);
+    return min(min(a, b), c);
+  }
+  float artDeco(vec2 p, float t) {
+    vec2 q = abs(p);
+    float v = 0.0;
+    // nested stepped frames streaming outward as you scroll (endless and reversible)
+    for (int i = 0; i < 7; i++) {
+      float k = fract(float(i) / 7.0 + t * 0.2);
+      float sz = mix(0.06, 1.3, k);
+      float d = steppedRect(q, vec2(sz * 0.8, sz), sz * 0.09);
+      float life = smoothstep(0.0, 0.2, k) * (1.0 - smoothstep(0.72, 1.0, k));
+      v += (decoLine(d, 0.0016) + decoLine(d + 0.016, 0.0009) * 0.65) * life; // doubled rule, deco style
+    }
+    // sunburst fanning down from above the frame; the rays sweep with scroll
+    vec2 o = p - vec2(0.0, 0.8);
+    float r = length(o);
+    float ang = atan(o.x, -o.y);
+    float rays = 24.0;
+    float rd = r * (fract(ang * rays / 3.14159265 + t * 0.6) - 0.5) * 3.14159265 / rays;
+    v += decoLine(rd, 0.0008) * smoothstep(0.3, 0.5, r) * (1.0 - smoothstep(0.95, 1.45, r)) * step(abs(ang), 1.2) * 0.5;
+    // stepped columns on both sides; their tops rise and fall like a skyline as you scroll
+    float side = uAspect * 0.5;
+    for (int i = 0; i < 6; i++) {
+      float fi = float(i);
+      float x0 = side * (0.58 + fi * 0.065), x1 = side * (0.58 + (fi + 1.0) * 0.065);
+      float top = 0.34 - fi * 0.075 + 0.07 * sin(t * 2.2 + fi * 0.9);
+      v += decoLine(q.x - x0, 0.0013) * step(p.y, top) * 0.85;
+      v += decoLine(p.y - top, 0.0013) * step(x0, q.x) * 0.85; // turns 90° and runs out to the screen edge
+    }
+    // chevrons marching down beneath the vault
+    float cy = p.y + q.x * 0.6;
+    float chev = (fract(cy * 7.0 + t * 1.4) - 0.5) / 7.0;
+    v += decoLine(chev, 0.0013) * step(p.y, -0.2) * step(q.x, 0.38) * 0.7;
+    return v;
+  }
+
   void main() {
     vec2 p = (vUv - 0.5) * vec2(uAspect, 1.0);
 
@@ -121,10 +181,38 @@ const backgroundFragment = /* glsl */ `
     col += uBeam * b * 0.4;
     col += uBeam * b * b * 0.12;
 
+    // Cairo Tech survey map: a fixed texture pinned to the section, swept in once like a plotter
+    if (uMapOn > 0.5) {
+      vec2 m = vec2((vUv.x - uMapRect.x) / uMapRect.z, ((1.0 - vUv.y) - uMapRect.y) / uMapRect.w);
+      if (m.x >= 0.0 && m.x <= 1.0 && m.y >= 0.0 && m.y <= 1.0) {
+        vec3 s = texture2D(uMap, vec2(m.x, 1.0 - m.y)).rgb;
+        float edge = smoothstep(0.0, 0.1, m.y) * (1.0 - smoothstep(0.9, 1.0, m.y));
+        float sweep = smoothstep(0.0, 0.04, uMapReveal * 1.12 - m.y - hash(floor(m * 90.0)) * 0.06);
+        vec3 gold = vec3(0.95, 0.71, 0.2);
+        col += gold * (s.r * 0.5 * sweep + s.b * 0.07 * uMapReveal) * edge;
+        col += vec3(0.97, 0.78, 0.33) * s.g * 0.85 * uMapLabels * edge;
+      }
+    }
+
+    // vault section: art deco line-work
+    if (uDeco > 0.001) col += mix(uBeam, vec3(1.0, 0.92, 0.72), 0.25) * artDeco(p, uDecoT) * 0.5 * uDeco;
+
     vec2 fp = p - uFocus * vec2(uAspect * 0.5, 0.5);
     col += uBeam * exp(-dot(fp, fp) / 0.16) * 0.1 * uFocusAmount;
 
     col *= 1.0 - 0.5 * dot(p * vec2(0.75, 1.0), p * vec2(0.75, 1.0));
+
+    // ASL mark: part of the backdrop, so the vault (and everything 3D) passes in front of it
+    if (uLogoAmt > 0.001) {
+      vec2 lm = vec2((vUv.x - uLogoRect.x) / uLogoRect.z, ((1.0 - vUv.y) - uLogoRect.y) / uLogoRect.w);
+      if (lm.x >= 0.0 && lm.x <= 1.0 && lm.y >= 0.0 && lm.y <= 1.0) {
+        float a = texture2D(uLogo, vec2(lm.x, 1.0 - lm.y)).a;
+        col = mix(col, vec3(0.97, 0.96, 0.94), a * 0.92 * uLogoAmt);
+      }
+      // soft gold glow around the mark
+      vec2 lc = vec2((vUv.x - uLogoRect.x - uLogoRect.z * 0.5) * uAspect, (1.0 - vUv.y) - uLogoRect.y - uLogoRect.w * 0.5);
+      col += uBeam * exp(-dot(lc, lc) / (uLogoRect.w * uLogoRect.w * 0.35)) * 0.08 * uLogoAmt;
+    }
     col += (hash(gl_FragCoord.xy + fract(uTime)) - 0.5) / 255.0 * 2.0;
     gl_FragColor = vec4(max(col, 0.0), 1.0);
   }
@@ -155,10 +243,11 @@ const ambientVertex = /* glsl */ `
 
 const ambientFragment = /* glsl */ `
   uniform vec3 uBeam;
+  uniform float uAmount;   // 0 in the vault section: only the vault is rendered there
   varying float vAlpha;
   void main() {
     float r = length(gl_PointCoord - 0.5);
-    float a = smoothstep(0.5, 0.0, r) * vAlpha * 0.4;
+    float a = smoothstep(0.5, 0.0, r) * vAlpha * 0.4 * uAmount;
     if (a < 0.01) discard;
     gl_FragColor = vec4(mix(vec3(1.0), uBeam, 0.55), a);
   }
@@ -193,6 +282,7 @@ const vertexShader = /* glsl */ `
   uniform float uScale;
   uniform float uHover;
   uniform float uIdle;
+  uniform float uStreamScale; // stretches the hero stream across the full screen width
   uniform float uSolid;  // 1 while the solid model has replaced the particles
   uniform vec4 uLocal;   // x: stream energy, y: balls apart, z: arm lift
   uniform vec2 uPointer;
@@ -202,6 +292,9 @@ const vertexShader = /* glsl */ `
   uniform mat4 uMT[6];        // each Momentum object's space → this object's space
   uniform float uToGlass;     // vault → Momentum morph progress
   uniform float uSolidM;      // 1 while the solid Momentum objects have replaced the particles
+  uniform float uToSports;    // Momentum → sport balls morph progress
+  uniform float uSolidS;      // 1 while the solid balls have replaced the particles
+  uniform float uQuiet;       // 1 in the vault section: hide the dust shell so only the vault renders
   uniform float uGlassPoint;  // point-size factor so particles read at the stage's scale
 
   varying vec3 vColor;
@@ -224,7 +317,7 @@ const vertexShader = /* glsl */ `
     float h = (0.55 + 0.22 * sin(x * 0.5 + 1.3 + t * 0.12)) * (1.0 + E * 1.2);
     float tw = x * 0.8 + t * 0.35 + E * 2.2;
     float c = cos(tw), s = sin(tw);
-    vec3 p = vec3(x * (1.0 + E * 0.3), yc * (1.0 + E * 0.8) + v * h * c, v * h * s * 1.15 + position.z);
+    vec3 p = vec3(x * (1.0 + E * 0.3) * uStreamScale, yc * (1.0 + E * 0.8) + v * h * c, v * h * s * 1.15 + position.z);
     // scroll makes the strands vibrate harder
     float buzz = E * E;
     p.y += sin(x * 3.2 - t * (2.0 + E * 6.0) + v * 1.5) * 0.06 * (0.3 + E * 1.6);
@@ -271,16 +364,15 @@ const vertexShader = /* glsl */ `
     return uMT[5];
   }
 
+  // scroll story order: 0 fiber stream → 1 loader → 2 vault (then Momentum, then the balls)
   vec3 posAt(float k) {
     if (k < 0.5) return gStreamPos;
-    if (k < 1.5) return sportsPos();
-    if (k < 2.5) return loaderPos();
+    if (k < 1.5) return loaderPos();
     return vaultPos();
   }
   vec3 colAt(float k) {
     if (k < 0.5) return gStreamCol;
-    if (k < 1.5) return aCol1;
-    if (k < 2.5) return aCol2;
+    if (k < 1.5) return aCol2;
     return aCol3;
   }
 
@@ -289,8 +381,8 @@ const vertexShader = /* glsl */ `
     bool dust = aMeta.y > 2.5;
     if (dust) { gStreamPos = position * 1.4; gStreamCol = aCol0; } else stream(r);
 
-    float st = clamp(uStage, 0.0, 3.0);
-    float i = min(floor(st), 2.0);
+    float st = clamp(uStage, 0.0, 2.0);
+    float i = min(floor(st), 1.0);
     float f = st - i;
     vec3 A = posAt(i);
     vec3 B = posAt(i + 1.0);
@@ -320,11 +412,20 @@ const vertexShader = /* glsl */ `
       vec3 gp = (targetMat(aGlassPart) * vec4(aGlass, 1.0)).xyz;
       p = mix(p, gp, gs) + dir * sin(3.14159265 * gs) * 0.22;
     }
-    // finale: everything breaks back into particles that scatter and vanish
+    // Momentum → sport balls: the stage's particles fly out to the balls on the right
+    float ss = 0.0;
+    if (!dust && uToSports > 0.0) {
+      ss = clamp(uToSports * 1.7 - r * 0.7, 0.0, 1.0);
+      ss = ss * ss * ss * (ss * (ss * 6.0 - 15.0) + 10.0);
+      p = mix(p, sportsPos(), ss) + dir * sin(3.14159265 * ss) * 0.35;
+    }
+    // finale (after the balls): everything breaks back into particles that scatter and vanish
     p += dir * uDisperse * (0.5 + r * 1.4);
 
     // smaller and fainter the further a particle is from the centre
-    float fade = smoothstep(1.6, 4.6, length(p));
+    // (the hero stream is stretched to the screen width, so measure its fade before the stretch)
+    float sx = mix(uStreamScale, 1.0, clamp(uStage, 0.0, 1.0));
+    float fade = smoothstep(1.6, 4.6, length(vec3(p.x / sx, p.y, p.z)));
 
     vec4 world = modelMatrix * vec4(p, 1.0);
     vec2 d = world.xy - uPointer;
@@ -338,13 +439,15 @@ const vertexShader = /* glsl */ `
     float solid = dust ? 0.0 : uSolid;
     float size = uSize * (dust ? 0.7 : 1.0) * (0.85 + r * 0.3) * (1.0 + arc * 0.2) * (1.0 - 0.65 * fade) * (1.0 - 0.6 * solid);
     // the camera is inside the vault by now, so scale points to the glass's framing as soon as the morph begins
-    size *= mix(1.0, uGlassPoint, max(gs, clamp(uToGlass * 3.0, 0.0, 1.0)));
+    // (and back to normal as they leave for the balls)
+    size *= mix(1.0, uGlassPoint, max(gs, clamp(uToGlass * 3.0, 0.0, 1.0)) * (1.0 - ss));
     gl_PointSize = clamp(size * uScale / -mv.z, 0.8, 12.0);
 
     vColor = mix(colAt(i), colAt(i + 1.0), e) * (1.0 + infl * 0.35);
     vColor = mix(vColor, aGlassCol, gs);
+    vColor = mix(vColor, aCol1, ss);
     // dust bows out as the vault turns into Momentum; the rest hand over to (and back from) the solid objects
-    float handover = dust ? (1.0 - uToGlass) : (1.0 - uSolidM);
+    float handover = dust ? (1.0 - uToGlass) * (1.0 - uQuiet) : (1.0 - uSolidM) * (1.0 - uSolidS);
     vAlpha = (dust ? 0.35 : 1.0) * (1.0 - uDisperse) * ie * (1.0 - 0.92 * fade) * (1.0 - solid) * handover;
   }
 `;
@@ -426,10 +529,14 @@ export function MorphingParticleScene() {
       uScale: { value: 500 },
       uHover: { value: 0 },
       uIdle: { value: reducedMotion ? 0 : 1 },
+      uStreamScale: { value: 1 },
       uSolid: { value: 0 },
       uMT: { value: Array.from({ length: 6 }, () => new THREE.Matrix4()) },
       uToGlass: { value: 0 },
       uSolidM: { value: 0 },
+      uToSports: { value: 0 },
+      uSolidS: { value: 0 },
+      uQuiet: { value: 0 },
       uGlassPoint: { value: 1 },
       uLocal: { value: new THREE.Vector4() },
       uPointer: { value: new THREE.Vector2(99, 99) },
@@ -457,6 +564,16 @@ export function MorphingParticleScene() {
       uTime: { value: 0 },
       uScroll: { value: 0 },
       uTone: { value: 0 },
+      uMap: { value: null as THREE.Texture | null },
+      uMapRect: { value: new THREE.Vector4(0, 2, 1, 1) },
+      uMapOn: { value: 0 },
+      uMapReveal: { value: 0 },
+      uMapLabels: { value: 0 },
+      uDeco: { value: 0 },
+      uDecoT: { value: 0 },
+      uLogo: { value: null as THREE.Texture | null },
+      uLogoRect: { value: new THREE.Vector4(0, 2, 0.1, 0.1) },
+      uLogoAmt: { value: 0 },
     };
     const background = new THREE.Mesh(
       new THREE.PlaneGeometry(2, 2),
@@ -483,6 +600,7 @@ export function MorphingParticleScene() {
       uScale: uniforms.uScale,
       uHalf: { value: new THREE.Vector2(6, 3.3) },
       uBeam: bgUniforms.uBeam,
+      uAmount: { value: 1 },
     };
     const ambient = new THREE.Points(ambientGeometry, new THREE.ShaderMaterial({
       uniforms: ambientUniforms, vertexShader: ambientVertex, fragmentShader: ambientFragment,
@@ -491,11 +609,81 @@ export function MorphingParticleScene() {
     ambient.frustumCulled = false;
     ambient.renderOrder = 1;
 
-    const momentum = createMomentumStage(renderer);
+    const momentum = createMomentumStage(renderer, { mirror: !!document.querySelector(".gp-ar") });
     const solids = createSolidForms(targets);
     model.add(solids.sports, solids.loader, solids.vault);
     const scene = new THREE.Scene();
     // the Momentum stage hangs off a camera-relative anchor (see frame())
+    /* ---- Cairo Tech survey map: drawn once into a texture, pinned to its section ---- */
+    /* ---- ASL mark for the vault section (drawn in the backdrop, behind the vault) ---- */
+    // Arabic reads right-to-left: the balls (and the ASL mark) sit on the opposite side
+    const sideSign = document.querySelector(".gp-ar") ? -1 : 1;
+    const LOGO_ASPECT = 1037 / 811;
+    let logoTexture: THREE.Texture | null = null;
+    new THREE.TextureLoader().load("/asl/asl-lockup-white.svg", (tex) => {
+      logoTexture = tex;
+      tex.colorSpace = THREE.SRGBColorSpace;
+      tex.anisotropy = 8;
+      bgUniforms.uLogo.value = tex;
+    });
+    function updateLogo(amount: number) {
+      // phones: the copy covers the right-hand side, so the mark is left out there
+      bgUniforms.uLogoAmt.value = logoTexture && window.innerWidth >= 700 ? amount : 0;
+      // right-hand side, vertically centred (mirrored for Arabic)
+      const vw = window.innerWidth;
+      const mobileLayout = vw < 700;
+      const w = mobileLayout ? 0.3 : Math.min(0.17, 260 / vw);
+      const h = (w * vw) / LOGO_ASPECT / viewH;
+      const rtl = document.documentElement.dir === "rtl" || !!document.querySelector(".gp-ar");
+      const x = rtl ? 0.065 : 1 - 0.065 - w;
+      const y = mobileLayout ? 0.12 : 0.5 - h / 2;
+      bgUniforms.uLogoRect.value.set(x, y, w, h);
+    }
+
+    /* ---- pinned section copy (loader, vault) driven by the 3D timeline ---- */
+    const pinLoader = document.getElementById("gp-pin-loader");
+    const pinVault = document.getElementById("gp-pin-vault");
+    const pinCache = new Map<HTMLElement, string>();
+    function setPin(el: HTMLElement | null, inV: number, outV: number) {
+      if (!el) return;
+      const key = `${inV.toFixed(3)}|${outV.toFixed(3)}`;
+      if (pinCache.get(el) === key) return;
+      pinCache.set(el, key);
+      el.style.setProperty("--in", inV.toFixed(3));
+      el.style.setProperty("--out", outV.toFixed(3));
+      const shown = inV * (1 - outV);
+      el.classList.toggle("is-live", shown > 0.6);
+      el.classList.toggle("is-hidden", shown < 0.002);
+    }
+
+    const mapSection = document.getElementById(SECTION_IDS[LOADER]);
+    let mapTexture: THREE.CanvasTexture | null = null;
+    let mapDrawStart = -1;
+    const mapTimer = window.setTimeout(() => {
+      if (!mapSection) return;
+      const build = () => {
+        const r = mapSection.getBoundingClientRect();
+        const w = 2048;
+        const h = Math.min(4096, Math.round(w * (r.height / Math.max(1, r.width))));
+        mapTexture = new THREE.CanvasTexture(drawSurveyMap(w, h));
+        mapTexture.anisotropy = 8;
+        bgUniforms.uMap.value = mapTexture;
+        bgUniforms.uMapOn.value = 1;
+      };
+      // wait for the mono font so the elevation labels render in it
+      document.fonts.load('600 14px "IBM Plex Mono"').then(build, build);
+    }, 400);
+    function updateSurveyMap(t: number) {
+      if (!mapSection || !mapTexture) return;
+      const r = mapSection.getBoundingClientRect();
+      bgUniforms.uMapRect.value.set(r.left / window.innerWidth, r.top / viewH, r.width / window.innerWidth, r.height / viewH);
+      // plot it the first time the section comes into view; after that it stays drawn
+      if (mapDrawStart < 0 && r.top < viewH * 0.75 && r.bottom > 0) mapDrawStart = t;
+      const since = mapDrawStart < 0 ? 0 : (reducedMotion ? 10 : t - mapDrawStart);
+      bgUniforms.uMapReveal.value = smooth(clamp(since / 2.8));
+      bgUniforms.uMapLabels.value = smooth(clamp((since - 2.3) / 0.8));
+    }
+
     const anchor = new THREE.Group();
     anchor.matrixAutoUpdate = false;
     anchor.add(momentum.group);
@@ -515,6 +703,14 @@ export function MorphingParticleScene() {
     scene.add(keyLight, rimLight);
     const camera = new THREE.PerspectiveCamera(32, 1, 0.05, 100);
     const vaultBars = new THREE.Vector3(...targets.vaultBars);
+    // top face of the top (hallmarked) gold bar, in the vault's normalised space
+    const vf = targets.frames.vault;
+    const topBar = VAULT_BARS[VAULT_BARS.length - 1];
+    const topBarTop = new THREE.Vector3((topBar[0] - vf.center[0]) * vf.scale, (topBar[1] + 0.075 - vf.center[1]) * vf.scale, (topBar[2] - vf.center[2]) * vf.scale);
+    const topBarWorld = new THREE.Vector3();
+    const overheadPos = new THREE.Vector3();
+    const overheadOffset = new THREE.Vector3(0, 1.18, 0.001); // straight above the bar, inside the vault
+    const upInto = new THREE.Vector3(0, 0, -1);
 
     renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.75));
     renderer.domElement.setAttribute("aria-hidden", "true");
@@ -525,6 +721,7 @@ export function MorphingParticleScene() {
     let anchors = SECTION_IDS.map(() => 0);
     let trackEnd = 1;
     let momentumEnd = 2;
+    let sportsEnd = 3;
     let viewH = window.innerHeight;
     let halfW = 6, halfH = 3.3, camDist = 10;
     let portrait = false;
@@ -545,6 +742,7 @@ export function MorphingParticleScene() {
       camera.updateProjectionMatrix();
       renderer.getDrawingBufferSize(drawSize);
       uniforms.uScale.value = drawSize.y / (2 * Math.tan(vfov / 2));
+      uniforms.uStreamScale.value = portrait ? 1 : Math.max(1, (halfW * 1.04) / 4.4); // stream half-width is 4.4
       momentum.setPointScale(uniforms.uScale.value);
       bgUniforms.uAspect.value = camera.aspect;
       ambientUniforms.uHalf.value.set(halfW, halfH);
@@ -555,6 +753,8 @@ export function MorphingParticleScene() {
       trackEnd = track!.getBoundingClientRect().bottom + window.scrollY;
       const m = document.getElementById(SECTION_IDS[MOMENTUM]);
       momentumEnd = m ? m.getBoundingClientRect().bottom + window.scrollY : trackEnd + 1;
+      const sp = document.getElementById(SECTION_IDS[SPORTS]);
+      sportsEnd = sp ? sp.getBoundingClientRect().bottom + window.scrollY : momentumEnd + 1;
     }
     resize();
     const resizeObserver = new ResizeObserver(resize);
@@ -568,31 +768,35 @@ export function MorphingParticleScene() {
       const y = window.scrollY;
       const vh = viewH;
       const A = anchors;
-      // morph k-1 → k while section k rises from 75% to 25% of the viewport
+      // fiber stream → loader → vault: each morph plays while its section rises from 75% to 25% of the viewport
       let stage = 0;
-      for (let k = 1; k < 4; k++) stage += span(y, A[k] - vh * 0.75, A[k] - vh * 0.25);
+      for (const k of [LOADER, VAULT]) stage += span(y, A[k] - vh * 0.75, A[k] - vh * 0.25);
       // per-form motion, active for the whole time each form is on screen
-      const local0 = span(y, 0, A[1] - vh * 0.45);                  // stream energises
-      const local1 = span(y, A[1] - vh * 0.3, A[2] - vh * 0.6);     // balls drift apart
-      const local2 = span(y, A[2] - vh * 0.3, A[3] - vh * 0.6);     // arm lifts, camera pans
-      const local3 = span(y, A[3] - vh * 0.3, trackEnd - vh * 0.7); // vault opens, camera flies in
+      const local0 = span(y, 0, A[LOADER] - vh * 0.45);                    // stream energises
+      const local2 = span(y, A[LOADER] - vh * 0.3, A[VAULT] - vh * 0.6);  // arm lifts, camera pans
+      const local3 = span(y, A[VAULT] - vh * 0.3, trackEnd - vh * 0.7);   // vault opens, camera flies in
       let tone = 0;
       for (let k = 1; k < SECTION_IDS.length; k++) tone += span(y, A[k] - vh * 0.75, A[k] - vh * 0.05);
-      // Vault → Momentum, all from where the camera already is (no pull-back):
-      // the bar particles stream into the glass, then hand over to the real glass, logo and sachets
+
+      // Vault → Momentum, all from where the camera already is (no pull-back)
       const mA = A[MOMENTUM];
       const mE = momentumEnd;
-      // 1. vault particles stream into the glass, logo and sachets
-      const toGlass = span(y, mA - vh * 0.65, mA - vh * 0.15);
-      // 2. once they have settled, the solid objects dissolve in over them (and back out at the end)
-      const mReveal = span(y, mA - vh * 0.22, mA + vh * 0.08) * (1 - span(y, mE - vh * 1.2, mE - vh * 0.9));
-      // 3. the pour plays while the copy is pinned
-      const mProgress = span(y, mA + vh * 0.08, mE - vh * 1.25);
-      // 4. finale: the particles the objects dissolved back into scatter and vanish
-      const disperse = span(y, mE - vh * 0.95, mE - vh * 0.5);
-      // once Momentum has gone, the (now empty) camera eases back to its home framing
-      const homeBack = span(y, mE - vh * 0.5, mE - vh * 0.1);
-      return { stage, local0, local1, local2, local3, tone, toGlass, mReveal, mProgress, disperse, homeBack, y };
+      const toGlass = span(y, mA - vh * 0.65, mA - vh * 0.15);   // bar particles stream into glass, logo, sachets
+      const mReveal = span(y, mA - vh * 0.22, mA + vh * 0.08)    // solid objects dissolve in over them…
+        * (1 - span(y, mE - vh * 1.15, mE - vh * 0.85));          // …and back into particles at the end
+      const mProgress = span(y, mA + vh * 0.08, mE - vh * 1.2);  // the pour, while the copy is pinned
+
+      // Momentum → sport balls on the right; the camera eases home on the way
+      const sA = A[SPORTS];
+      const sE = sportsEnd;
+      const toSports = span(y, mE - vh * 0.9, mE - vh * 0.3);
+      const homeBack = span(y, mE - vh * 0.9, mE - vh * 0.35);
+      // the heritage copy is pinned from sA until sE - 1vh, so the whole ball sequence plays while it is on screen
+      const sReveal = span(y, mE - vh * 0.32, mE - vh * 0.05)    // solid balls take over…
+        * (1 - span(y, sE - vh * 1.3, sE - vh * 1.1));            // …and break back into particles at the end
+      const local1 = span(y, sA + vh * 0.05, sE - vh * 1.32);     // balls drift apart
+      const disperse = span(y, sE - vh * 1.15, sE - vh * 0.75);   // finale: the particles scatter and vanish
+      return { stage, local0, local1, local2, local3, tone, toGlass, mReveal, mProgress, toSports, sReveal, disperse, homeBack, y };
     }
 
     /* ---- pointer ---- */
@@ -634,6 +838,9 @@ export function MorphingParticleScene() {
     const focusM = new THREE.Vector3();
     const anchorScale = new THREE.Matrix4();
     const modelInverse = new THREE.Matrix4();
+    const dollyFrame = new THREE.Matrix4();
+    const dollyEuler = new THREE.Euler();
+    const dollyScale = new THREE.Vector3();
     const homeCamInverse = new THREE.Matrix4();
 
     function applyPalette(tone: number) {
@@ -668,6 +875,8 @@ export function MorphingParticleScene() {
         state.tone = damp(state.tone, target.tone, 3, dt);
         state.toGlass = damp(state.toGlass, target.toGlass, 5, dt);
         state.homeBack = damp(state.homeBack, target.homeBack, 5, dt);
+        state.toSports = damp(state.toSports, target.toSports, 5, dt);
+        state.sReveal = damp(state.sReveal, target.sReveal, 5, dt);
         state.scroll = damp(state.scroll, target.y, 5, dt);
         state.hover = damp(state.hover, pointerInside ? 1 : 0, 5, dt);
         uniforms.uSpread.value = damp(uniforms.uSpread.value, 1 + Math.min(gap * 0.9, 0.9), 3, dt);
@@ -677,43 +886,71 @@ export function MorphingParticleScene() {
       }
 
       const idle = reducedMotion ? 0 : 1;
-      const s = clamp(state.stage, 0, 3);
-      const i = Math.min(2, Math.floor(s));
+      const s = clamp(state.stage, 0, 2);
+      const i = Math.min(1, Math.floor(s));
       const f = s - i;
       const eased = smooth(clamp((f - 0.1) / 0.8));
       const a = POSE[i], b = POSE[i + 1];
-      // how present each form is right now (1 when settled, fades during morphs)
-      const w = [0, 1, 2, 3].map((k) => clamp(1 - Math.abs(s - k)));
+      // how present each form is right now (1 when settled, fades during morphs): 0 stream, 1 loader, 2 vault
+      const w = [0, 1, 2].map((n) => clamp(1 - Math.abs(s - n)));
+      const back = smooth(clamp(state.homeBack));
+      // the balls take over the model's framing once Momentum hands over to them
+      const sp = smooth(clamp(state.toSports));
 
       // vault: the camera flies in through the opening door towards the gold
-      const dolly = smooth(clamp((state.local3 - 0.15) / 0.85)) * w[3];
-      const calm = 1 - dolly; // hold the vault steady while the camera moves in
+      // vault timeline (local3): handle spins 0→.18, door opens .15→.45, camera flies in .1→.5,
+      // then rises over the gold and tilts down to a top-down view of the hallmarked bar .55→.95
+      const dolly = smooth(clamp((state.local3 - 0.1) / 0.4)) * w[2];
+      const overhead = smooth(clamp((state.local3 - 0.55) / 0.4)) * w[2];
+      const calm = 1 - dolly * (1 - back); // hold the vault steady while the camera is inside
+
+      // pinned copy follows the objects: loader copy rises in as the loader forms and leaves as it
+      // morphs into the vault; vault copy rises in with the vault and leaves as the camera goes inside
+      const loaderIn = smooth(clamp((s - 0.62) / 0.38));
+      const loaderOut = smooth(clamp((s - 1.04) / 0.3));
+      setPin(pinLoader, loaderIn, loaderOut);
+      setPin(pinVault, smooth(clamp((s - 1.62) / 0.38)), smooth(clamp((dolly - 0.4) / 0.3)));
+      document.documentElement.classList.toggle("gp-loader-on", loaderIn > 0.85 && loaderOut < 0.4);
 
       // scroll-linked turning while each form plays its motion
-      const scrollTurn = w[1] * state.local1 * 0.5 + w[2] * state.local2 * 0.25;
       const twirl = Math.sin(Math.PI * eased) * 0.9;
-      model.rotation.y = lerp(a.ry, b.ry, eased) + twirl + scrollTurn + (Math.sin(t * 0.22) * 0.14 * idle + parallaxX * 0.35) * calm;
-      model.rotation.x = lerp(a.rx, b.rx, eased) + (Math.sin(t * 0.17) * 0.04 * idle + parallaxY * 0.18) * calm;
-      const x = portrait ? 0 : lerp(a.x, b.x, eased) * halfW;
-      const y = portrait ? halfH * 0.3 : 0;
+      const baseRy = lerp(a.ry, b.ry, eased) + twirl + w[1] * state.local2 * 0.25;
+      const ballsRy = SPORTS_POSE.ry * sideSign + state.local1 * 0.5;
+      model.rotation.y = lerp(baseRy, ballsRy, sp) + (Math.sin(t * 0.22) * 0.14 * idle + parallaxX * 0.35) * calm;
+      model.rotation.x = lerp(lerp(a.rx, b.rx, eased), SPORTS_POSE.rx, sp) + (Math.sin(t * 0.17) * 0.04 * idle + parallaxY * 0.18) * calm;
+      const x = portrait ? 0 : lerp(lerp(a.x, b.x, eased), SPORTS_POSE.x * sideSign, sp) * halfW;
+      // phones: objects sit in the upper part of the screen, a touch smaller, leaving the lower half to the copy
+      const y = portrait ? halfH * 0.36 : 0;
       model.position.set(x, y + Math.sin(t * 0.6) * 0.05 * idle, 0);
-      model.scale.setScalar(lerp(a.scale, b.scale, eased) * (1 + w[0] * state.local0 * 0.08));
+      model.scale.setScalar(lerp(lerp(a.scale, b.scale, eased) * (1 + w[0] * state.local0 * 0.08), SPORTS_POSE.scale, sp) * (portrait ? 0.86 : 1));
 
       // loader: the camera pans upwards with the lifting arm
-      const pan = smooth(state.local2) * w[2] * halfH * 0.3;
+      const pan = smooth(state.local2) * w[1] * halfH * 0.3;
       camPos.set(0, pan, camDist);
       camLook.set(0, pan, 0);
-      if (dolly > 0.0001) {
-        model.updateMatrixWorld(true);
-        barsWorld.copy(vaultBars).applyMatrix4(model.matrixWorld);
+      if (dolly > 0.0001 && back < 0.9999) {
+        // the vault's own framing (before the balls' framing takes over the model)
+        dollyFrame.makeRotationFromEuler(dollyEuler.set(lerp(a.rx, b.rx, eased), baseRy, 0));
+        dollyFrame.scale(dollyScale.setScalar(lerp(a.scale, b.scale, eased) * (portrait ? 0.86 : 1)));
+        dollyFrame.setPosition(portrait ? 0 : lerp(a.x, b.x, eased) * halfW, y + Math.sin(t * 0.6) * 0.05 * idle, 0);
+        barsWorld.copy(vaultBars).applyMatrix4(dollyFrame);
         camPos.lerp(dollyPos.copy(barsWorld).add(dollyOffset), dolly);
         camLook.lerp(barsWorld, dolly);
+        // then rise over the stack and tilt down until we look straight down on the hallmarked top bar
+        if (overhead > 0.0001) {
+          topBarWorld.copy(topBarTop).applyMatrix4(dollyFrame);
+          overheadPos.copy(topBarWorld).add(overheadOffset);
+          camPos.lerp(overheadPos, overhead);
+          camPos.y += Math.sin(Math.PI * overhead) * 0.18; // a gentle arc as it climbs over the bars
+          camLook.lerp(topBarWorld, overhead);
+        }
       }
-      // after Momentum the camera returns home (nothing 3D is on screen by then)
-      const back = smooth(clamp(state.homeBack));
+      // Momentum → balls: the camera returns home as the particles fly out to the balls
       camPos.lerp(homePos.set(0, 0, camDist), back);
       camLook.lerp(homeLook.set(0, 0, 0), back);
       camera.position.copy(camPos);
+      // looking straight down needs a different "up" (into the vault) so the bar reads upright
+      camera.up.set(0, 1, 0).lerp(upInto, overhead * (1 - back)).normalize();
       camera.lookAt(camLook);
       camera.updateMatrixWorld();
 
@@ -725,7 +962,7 @@ export function MorphingParticleScene() {
       homeCamInverse.makeTranslation(0, 0, -camDist); // home camera sits at (0, 0, camDist) looking down -z
       anchor.matrix.copy(camera.matrixWorld).multiply(anchorScale.makeScale(k, k, k)).multiply(homeCamInverse);
       anchor.matrixWorldNeedsUpdate = true;
-      momentum.group.position.set(0, portrait ? halfH * 0.32 : -0.1, 0);
+      momentum.group.position.set(0, portrait ? halfH * 0.38 : -0.1, 0);
       momentum.group.scale.setScalar(Math.min(1, halfW / 3.4));
       momentum.update({ reveal: mP, progress: state.mProgress, time: t * idle });
       anchor.updateMatrixWorld(true);
@@ -736,32 +973,46 @@ export function MorphingParticleScene() {
       uniforms.uToGlass.value = state.toGlass;
       uniforms.uSolidM.value = mP;
       uniforms.uGlassPoint.value = k;
+      uniforms.uToSports.value = state.toSports;
+      const sR = smooth(clamp(state.sReveal));
+      uniforms.uSolidS.value = sR;
 
       uniforms.uLocal.value.set(state.local0, state.local1, smooth(state.local2), state.local3);
       // vault: unlock the handle, then swing the door fully open
-      uniforms.uSpin.value = smooth(clamp(state.local3 / 0.35)) * Math.PI * 1.25;
-      uniforms.uDoor.value = smooth(clamp((state.local3 - 0.3) / 0.7)) * 1.9;
+      uniforms.uSpin.value = smooth(clamp(state.local3 / 0.18)) * Math.PI * 1.25;
+      uniforms.uDoor.value = smooth(clamp((state.local3 - 0.15) / 0.3)) * 1.9;
       uniforms.uStage.value = s;
       uniforms.uTime.value = t;
       // cursor push is off for the Momentum morph (the camera is very close there, so it would scatter the glass)
-      uniforms.uHover.value = state.hover * (1 - smooth(clamp(state.toGlass / 0.25)));
+      // (it comes back once the particles head out to the balls and the camera is home)
+      uniforms.uHover.value = state.hover * (1 - smooth(clamp(state.toGlass / 0.25)) * (1 - sp));
       uniforms.uDisperse.value = smooth(clamp(state.disperse));
       points.visible = uniforms.uDisperse.value < 0.999;
 
       // once particles settle into a form, the solid model dissolves in and takes over;
       // it dissolves back out as soon as the next morph (or the vault → glass morph) begins
       const settle = (n: number) => smooth(clamp((w[n] - 0.55) / 0.4));
-      const reveal: [number, number, number] = [settle(1), settle(2), settle(3) * (1 - smooth(clamp(state.toGlass / 0.3)))];
-      uniforms.uSolid.value = Math.max(...reveal);
-      solids.update({ reveal, apart: state.local1, lift: smooth(state.local2) * 0.95, spin: uniforms.uSpin.value, door: uniforms.uDoor.value });
+      const loaderSolid = settle(1);
+      const vaultSolid = settle(2) * (1 - smooth(clamp(state.toGlass / 0.3)));
+      uniforms.uSolid.value = Math.max(loaderSolid, vaultSolid);
+      solids.update({ reveal: [sR, loaderSolid, vaultSolid], apart: state.local1, lift: smooth(state.local2) * 0.95, spin: uniforms.uSpin.value, door: uniforms.uDoor.value });
 
       applyPalette(state.tone);
-      focus.copy(model.position).lerp(momentum.group.getWorldPosition(focusM), Math.max(mP, state.toGlass)).project(camera);
+      focus.copy(model.position).lerp(momentum.group.getWorldPosition(focusM), Math.max(mP, state.toGlass) * (1 - sp)).project(camera);
       bgUniforms.uFocus.value.set(focus.x, focus.y);
-      bgUniforms.uFocusAmount.value = Math.max(1 - dolly, state.toGlass, mP) * (1 - back);
+      bgUniforms.uFocusAmount.value = Math.max(1 - dolly, state.toGlass * (1 - sp), mP, sR) * (1 - uniforms.uDisperse.value);
       bgUniforms.uTime.value = t * idle;
       bgUniforms.uScroll.value = state.scroll / viewH;
       bgUniforms.uTone.value = clamp(state.tone, 0, PALETTES.length - 1);
+      updateSurveyMap(t);
+      // the art deco line-work belongs to the vault section and moves with the scroll position
+      bgUniforms.uDeco.value = smooth(clamp(1 - Math.abs(state.tone - VAULT) * 1.3));
+      // vault section: no floating specks or dust — only the vault itself
+      ambientUniforms.uAmount.value = 1 - bgUniforms.uDeco.value;
+      uniforms.uQuiet.value = bgUniforms.uDeco.value;
+      bgUniforms.uDecoT.value = state.scroll / viewH;
+      // the ASL mark shows with the vault section and is gone once the camera is inside the vault
+      updateLogo(bgUniforms.uDeco.value * (1 - smooth(clamp((dolly - 0.2) / 0.4))));
       ambientUniforms.uTime.value = t * idle;
       ambientUniforms.uScroll.value = (state.scroll / viewH) * halfH * 0.9;
 
@@ -790,6 +1041,9 @@ export function MorphingParticleScene() {
       material.dispose();
       background.geometry.dispose();
       (background.material as THREE.Material).dispose();
+      window.clearTimeout(mapTimer);
+      (logoTexture as THREE.Texture | null)?.dispose();
+      (mapTexture as THREE.CanvasTexture | null)?.dispose();
       ambientGeometry.dispose();
       (ambient.material as THREE.Material).dispose();
       momentum.dispose();
@@ -798,6 +1052,7 @@ export function MorphingParticleScene() {
       pmrem.dispose();
       renderer.dispose();
       renderer.domElement.remove();
+      document.documentElement.classList.remove("gp-loader-on");
     };
   }, []);
 

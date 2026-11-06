@@ -140,6 +140,73 @@ const doorFaceTexture = () => canvasTexture(512, 512, (ctx, w) => {
   ctx.lineWidth = 10; ctx.strokeStyle = "#48535c"; ctx.beginPath(); ctx.arc(c, c, c * 0.97, 0, TAU); ctx.stroke();
 });
 
+/**
+ * Top face of the hallmark bar: brushed gold with the ASL hallmark struck into it
+ * (name, emblem, fineness / karat / weight, serial). Drawn as an engraving: dark
+ * recess with a light lower lip, so it reads as cut into the metal.
+ */
+function engravedBarTexture() {
+  const W = 600, H = 840;
+  const canvas = document.createElement("canvas");
+  canvas.width = W;
+  canvas.height = H;
+  const ctx = canvas.getContext("2d")!;
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.anisotropy = 8;
+
+  const emblem = new Image();
+  const draw = () => {
+    // brushed gold
+    const g = ctx.createLinearGradient(0, 0, W, H);
+    g.addColorStop(0, "#f6d77f"); g.addColorStop(0.45, "#e2b452"); g.addColorStop(1, "#c79434");
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, W, H);
+    ctx.globalAlpha = 0.07;
+    for (let y = 0; y < H; y += 3) { ctx.fillStyle = y % 6 ? "#fff6d0" : "#8a6420"; ctx.fillRect(0, y, W, 1); }
+    ctx.globalAlpha = 1;
+
+    const engrave = (fn: (dx: number, dy: number, color: string) => void) => {
+      fn(0, 2, "rgba(255,244,200,.55)"); // light lip below the cut
+      fn(0, 0, "rgba(84,52,8,.95)");     // the recess
+    };
+    // inner border
+    engrave((dx, dy, color) => {
+      ctx.strokeStyle = color; ctx.lineWidth = 4;
+      ctx.beginPath(); ctx.roundRect(34 + dx, 34 + dy, W - 68, H - 68, 26); ctx.stroke();
+    });
+    // every line is kept inside the engraved border (34px frame + breathing room on each side)
+    const MAX_W = W - 2 * 74;
+    const text = (s: string, y: number, font: string, spacing = 0) => engrave((dx, dy, color) => {
+      ctx.font = font; ctx.fillStyle = color; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+      (ctx as CanvasRenderingContext2D & { letterSpacing: string }).letterSpacing = `${spacing}px`;
+      const width = ctx.measureText(s).width;
+      ctx.save();
+      ctx.translate(W / 2 + dx, y + dy);
+      if (width > MAX_W) ctx.scale(MAX_W / width, 1); // squeeze horizontally to fit
+      ctx.fillText(s, 0, 0);
+      ctx.restore();
+    });
+    text("ASL  ·  أصل", 120, '600 40px "IBM Plex Mono", "IBM Plex Sans Arabic", monospace', 6);
+    // emblem, struck into the metal
+    if (emblem.complete && emblem.naturalWidth) {
+      const s = 250, x = (W - s) / 2, y = 225;
+      ctx.save();
+      ctx.globalAlpha = 0.5; ctx.filter = "brightness(1.6) blur(0.5px)"; ctx.drawImage(emblem, x, y + 3, s, s);
+      ctx.globalAlpha = 0.95; ctx.filter = "grayscale(.35) brightness(.55) contrast(1.25)"; ctx.globalCompositeOperation = "multiply"; ctx.drawImage(emblem, x, y, s, s);
+      ctx.restore();
+    }
+    text("999.9 · 24K · 10 G", 600, '600 36px "IBM Plex Mono", monospace', 2);
+    text("ASL-24K-000187", 700, '600 40px "IBM Plex Mono", monospace', 4);
+    tex.needsUpdate = true;
+  };
+  draw();
+  emblem.onload = draw;
+  emblem.src = "/asl/asl-emblem.svg";
+  document.fonts?.load('600 40px "IBM Plex Mono"').then(draw, () => undefined);
+  return tex;
+}
+
 /* ------------------------------------------------------------------ */
 /* Geometry helpers                                                     */
 /* ------------------------------------------------------------------ */
@@ -325,7 +392,19 @@ export function createSolidForms(targets: MorphSet) {
   const back = new THREE.Mesh(track(new THREE.CircleGeometry(DOOR_R + 0.07, 96)), inner);
   back.position.z = -1.06;
   V.add(back);
-  for (const c of VAULT_BARS) V.add(roundedBox(c, [0.44, 0.15, 0.6], bar, 0.025));
+  VAULT_BARS.forEach((c, i) => {
+    V.add(roundedBox(c, [0.44, 0.15, 0.6], bar, 0.025));
+    // the top bar carries the ASL hallmark, seen when the camera ends looking straight down on it
+    if (i === VAULT_BARS.length - 1) {
+      const face = new THREE.Mesh(
+        track(new THREE.PlaneGeometry(0.4, 0.56)),
+        mat("vault", { map: track(engravedBarTexture()), roughness: 0.34, metalness: 1.0 }, 0xfff0b0),
+      );
+      face.rotation.x = -Math.PI / 2; // texture "up" points into the vault, which is screen-up from above
+      face.position.set(c[0], c[1] + 0.075 + 0.0015, c[2]);
+      V.add(face);
+    }
+  });
   const frameRing = new THREE.Mesh(track(new THREE.TorusGeometry(DOOR_R + 0.1, 0.06, 16, 120)), gold);
   frameRing.position.z = 0.22;
   V.add(frameRing);

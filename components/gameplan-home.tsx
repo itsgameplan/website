@@ -11,7 +11,7 @@ import { VenturesSection } from "@/components/sections/ventures-section";
 import { AdvisorySection } from "@/components/sections/advisory-section";
 import { MomentumSection } from "@/components/sections/momentum-section";
 import { ProcessSection } from "@/components/sections/process-section";
-import { ApplySection } from "@/components/sections/apply-section";
+import { SiteFooter } from "@/components/sections/site-footer";
 import { chapters, type Chapter, type Dictionary, type Locale } from "@/i18n/translations";
 
 const MorphingParticleScene = dynamic(() => import("@/components/ui/morphing-particle-scene").then((mod) => mod.MorphingParticleScene), { ssr: false });
@@ -41,7 +41,11 @@ export function GameplanHome({ locale, t }: { locale: Locale; t: Dictionary }) {
 
   const jump = (id: Chapter) => {
     setMenuOpen(false);
-    document.getElementById(id)?.scrollIntoView({ behavior: reducedMotion ? "instant" : "smooth" });
+    const target = document.getElementById(id);
+    if (!target) return;
+    // glide with the smooth-scroll engine when it is running, so jumps feel like the rest of the page
+    if (window.__gpLenis && !reducedMotion) window.__gpLenis.scrollTo(target, { duration: 1.8 });
+    else target.scrollIntoView({ behavior: reducedMotion ? "instant" : "smooth" });
   };
   const playSound = () => {
     if (!soundOn) return;
@@ -71,7 +75,7 @@ export function GameplanHome({ locale, t }: { locale: Locale; t: Dictionary }) {
         <span className="gp-logo-fallback">GAMEPLAN<span className="gp-logo-dot">.</span></span>
       </button>
       <nav className="gp-nav" aria-label={t.primaryNavigation}>
-        <button className="gp-nav-link gp-skip" onClick={() => navClick("apply")}>({t.skip})</button>
+        <button className="gp-nav-link gp-skip" onClick={() => navClick("process")}>({t.skip})</button>
         <button className="gp-nav-link" onClick={() => setMenuOpen(!menuOpen)} aria-expanded={menuOpen} aria-controls="gp-chapter-menu">
           ({t.menu}) {menuOpen ? <X size={14}/> : <Menu size={14}/>}
         </button>
@@ -100,15 +104,14 @@ export function GameplanHome({ locale, t }: { locale: Locale; t: Dictionary }) {
     <main>
       <div id="gp-morph-track" className="gp-morph-track">
         <HeroSection t={t} onNavigate={navClick} replayKey={replayKey} />
-        <AboutSection t={t} onNavigate={navClick} />
         <VenturesSection t={t} />
         <AdvisorySection t={t} />
       </div>
       <MomentumSection t={t} />
+      <AboutSection t={t} onNavigate={navClick} />
       <ProcessSection t={t} />
-      <ApplySection t={t} />
     </main>
-    <footer className="gp-footer"><span>GAMEPLAN®</span><span>{t.footer}</span><button onClick={() => { jump("home"); setReplayKey((k) => k + 1); }}>{t.replay} ↑</button></footer>
+    <SiteFooter t={t} locale={locale} onNavigate={navClick} onReplay={() => { jump("home"); setReplayKey((k) => k + 1); }} />
     {reducedMotion && <button className="gp-replay-floating" onClick={() => setReplayKey((k) => k + 1)}>{t.replay}</button>}
   </div>;
 }
