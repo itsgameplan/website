@@ -1,6 +1,6 @@
 export const locales = ["en", "ar"] as const;
 export type Locale = (typeof locales)[number];
-export const chapters = ["home", "about", "ventures", "advisory", "process", "apply"] as const;
+export const chapters = ["home", "about", "ventures", "advisory", "momentum", "process", "apply"] as const;
 export type Chapter = (typeof chapters)[number];
 export const dictionaries = {
   en: {
@@ -15,10 +15,11 @@ export const dictionaries = {
     ventureThree: "BRAND EXPERIENCES", ventureThreeDesc: "Creating identities and moments that people remember.",
     advisoryTag: "03 / HOW WE HELP", advisoryTitle: "THINK BIGGER.", advisoryAccent: "MOVE FASTER.", advisoryDesc: "The right combination of strategy, design and technology can change the trajectory of an idea.",
     advisoryOne: "STRATEGY & POSITIONING", advisoryTwo: "PRODUCT & TECHNOLOGY", advisoryThree: "GROWTH & EXECUTION",
-    processTag: "04 / OUR APPROACH", processTitle: "FROM WHAT IF", processAccent: "TO WHAT'S NEXT.", processDesc: "A simple process. No unnecessary theatre. Just thoughtful work and relentless execution.",
+    momentumTag: "04 / CASE STUDY", momentumTitle: "MOMENTUM.", momentumAccent: "HYDRATION IN MOTION.", momentumDesc: "Clean electrolytes for everyday wins. Built by Gameplan from formula to sachet to shelf.", momentumServices: "PRODUCT DEVELOPMENT · PACKAGING · MANUFACTURING · BRAND · E-COMMERCE", momentumFlavour: "PINK LEMONADE",
+    processTag: "05 / OUR APPROACH", processTitle: "FROM WHAT IF", processAccent: "TO WHAT'S NEXT.", processDesc: "A simple process. No unnecessary theatre. Just thoughtful work and relentless execution.",
     stepOne: "DISCOVER", stepOneDesc: "Find the opportunity worth pursuing.", stepTwo: "DESIGN", stepTwoDesc: "Shape a clear, compelling direction.", stepThree: "BUILD", stepThreeDesc: "Make it real, test it, refine it.", stepFour: "LAUNCH", stepFourDesc: "Put it in the world and keep moving.",
-    applyTag: "05 / LET'S MAKE SOMETHING", applyTitle: "GOT A", applyAccent: "GAMEPLAN?", applyDesc: "Have an idea, a challenge or an ambitious project? Let's make the next move together.", applyCta: "START A CONVERSATION", footer: "IDEAS INTO ACTION.",
-    home: "HOME", about: "ABOUT", ventures: "VENTURES", advisory: "ADVISORY", process: "PROCESS", apply: "APPLY", replay: "REPLAY INTRO",
+    applyTag: "06 / LET'S MAKE SOMETHING", applyTitle: "GOT A", applyAccent: "GAMEPLAN?", applyDesc: "Have an idea, a challenge or an ambitious project? Let's make the next move together.", applyCta: "START A CONVERSATION", footer: "IDEAS INTO ACTION.",
+    home: "HOME", about: "ABOUT", ventures: "VENTURES", advisory: "ADVISORY", momentum: "MOMENTUM", process: "PROCESS", apply: "APPLY", replay: "REPLAY INTRO",
   },
   ar: {
     formOrigin: "الفكرة تتشكل", formSports: "عالم الرياضة", formLoader: "نبني على أرض الواقع", formVault: "قيمة تدوم", formHint: "حرّك المؤشر لتتفاعل الجزيئات",
@@ -32,10 +33,11 @@ export const dictionaries = {
     ventureThree: "تجارب العلامات", ventureThreeDesc: "نصنع هويات وتجارب تبقى في الذاكرة.",
     advisoryTag: "٠٣ / كيف نساعد", advisoryTitle: "فكّر أبعد.", advisoryAccent: "تحرّك أسرع.", advisoryDesc: "الاستراتيجية والتصميم والتقنية معاً قادرة على تغيير مسار أي فكرة.",
     advisoryOne: "الاستراتيجية والتموضع", advisoryTwo: "المنتجات والتقنية", advisoryThree: "النمو والتنفيذ",
-    processTag: "٠٤ / منهجيتنا", processTitle: "من ماذا لو", processAccent: "إلى الخطوة التالية.", processDesc: "عملية واضحة بلا تعقيد غير ضروري. عمل مدروس وتنفيذ مستمر.",
+    momentumTag: "٠٤ / دراسة حالة", momentumTitle: "مومنتم.", momentumAccent: "ترطيب يواكب حركتك.", momentumDesc: "إلكتروليتات نقية لإنجازات كل يوم. بنتها جيم بلان من التركيبة إلى الكيس إلى رف المتجر.", momentumServices: "تطوير المنتج · التغليف · التصنيع · العلامة التجارية · التجارة الإلكترونية", momentumFlavour: "ليموناضة وردية",
+    processTag: "٠٥ / منهجيتنا", processTitle: "من ماذا لو", processAccent: "إلى الخطوة التالية.", processDesc: "عملية واضحة بلا تعقيد غير ضروري. عمل مدروس وتنفيذ مستمر.",
     stepOne: "نكتشف", stepOneDesc: "نحدد الفرصة التي تستحق السعي.", stepTwo: "نصمم", stepTwoDesc: "نرسم اتجاهاً واضحاً ومقنعاً.", stepThree: "نبني", stepThreeDesc: "ننفذ ونختبر ونحسن.", stepFour: "نطلق", stepFourDesc: "ننطلق إلى العالم ونواصل التقدم.",
-    applyTag: "٠٥ / لنصنع شيئاً", applyTitle: "عندك", applyAccent: "خطة؟", applyDesc: "لديك فكرة أو تحدٍ أو مشروع طموح؟ لنبدأ الخطوة التالية معاً.", applyCta: "ابدأ المحادثة", footer: "من الفكرة إلى التنفيذ.",
-    home: "الرئيسية", about: "من نحن", ventures: "المشاريع", advisory: "الاستشارات", process: "المنهجية", apply: "تواصل", replay: "إعادة المقدمة",
+    applyTag: "٠٦ / لنصنع شيئاً", applyTitle: "عندك", applyAccent: "خطة؟", applyDesc: "لديك فكرة أو تحدٍ أو مشروع طموح؟ لنبدأ الخطوة التالية معاً.", applyCta: "ابدأ المحادثة", footer: "من الفكرة إلى التنفيذ.",
+    home: "الرئيسية", about: "من نحن", ventures: "المشاريع", advisory: "الاستشارات", momentum: "مومنتم", process: "المنهجية", apply: "تواصل", replay: "إعادة المقدمة",
   },
 };
 

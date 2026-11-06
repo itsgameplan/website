@@ -22,6 +22,10 @@ export type MorphSet = Record<FormName, MorphTarget> & {
   loaderArm: Float32Array;
   /** Lift-arm pivot (x, y) in normalised loader space. */
   loaderPivot: [number, number];
+  /** Centre of the gold-bar stack inside the vault, in normalised space (camera dolly target). */
+  vaultBars: [number, number, number];
+  /** Design-space → normalised-space transform per solid form (p_norm = (p - center) * scale). */
+  frames: Record<"sports" | "loader" | "vault", { center: [number, number, number]; scale: number }>;
 };
 
 type V3 = [number, number, number];
@@ -303,59 +307,74 @@ const TENNIS_SEAM: V3[] = Array.from({ length: 160 }, (_, i) => {
   return [A * Math.cos(t) + B * Math.cos(3 * t), A * Math.sin(t) - B * Math.sin(3 * t), Math.sqrt(4 * A * B) * Math.sin(2 * t)];
 });
 
+/* Surface patterns as functions of the unit direction on each ball — shared by
+   the particle sampler and the solid models' textures. */
+export function soccerColor(raw: V3): V3 {
+  const d = rotX(rotZ(raw, 0.3), 0.25);
+  let best = -2, second = -2, pent = false;
+  for (const c of ICO) { const s = dot(d, c) - 0.035; if (s > best) { second = best; best = s; pent = true; } else if (s > second) second = s; }
+  for (const c of DODECA) { const s = dot(d, c); if (s > best) { second = best; best = s; pent = false; } else if (s > second) second = s; }
+  if (best - second < 0.012) return hex(0x8c9196);
+  return pent ? hex(0x15191e) : hex(0xf4f3ee);
+}
+export function basketColor(raw: V3): V3 {
+  const d = rotZ(raw, -0.45);
+  const w = 0.028;
+  const seam = Math.abs(d[1]) < w || Math.abs(d[0]) < w || Math.abs(Math.abs(d[2]) - 0.58 - 0.32 * d[0] * d[0]) < w * 1.2;
+  if (seam) return hex(0x1d1410);
+  const grain = 0.92 + 0.08 * Math.sin(raw[0] * 90) * Math.sin(raw[1] * 87) * Math.sin(raw[2] * 93);
+  return mul(hex(0xe2692a), grain);
+}
+export function tennisColor(raw: V3): V3 {
+  const d = rotZ(rotX(raw, 0.6), 0.4);
+  let m = 9;
+  for (const s of TENNIS_SEAM) m = Math.min(m, 1 - dot(d, s));
+  return m < 0.0045 ? hex(0xf7f5ea) : hex(0xcfe04a);
+}
+export function footballColor(d: V3): V3 {
+  let c = mul(hex(0x7a3d1e), 0.95 + 0.05 * Math.sin(d[0] * 70) * Math.sin(d[2] * 70));
+  const facing = d[2] > 0.82 && Math.abs(d[0]) < 0.42;
+  if (facing && (Math.abs(d[1]) < 0.035 || (Math.abs(d[1]) < 0.12 && Math.abs(((d[0] + 0.42) % 0.105) - 0.05) < 0.016))) c = hex(0xf6f1e4);
+  if (Math.abs(Math.abs(d[0]) - 0.74) < 0.035) c = hex(0xf6f1e4);
+  return c;
+}
+
+export const BALLS = {
+  soccer: { center: [0.05, -0.18, 0.55] as V3, radius: 0.92 },
+  basket: { center: [-1.2, 0.55, -0.45] as V3, radius: 0.86 },
+  tennis: { center: [1.18, 0.95, -0.05] as V3, radius: 0.44 },
+  football: { center: [1.25, -0.82, 0.05] as V3, radii: [0.68, 0.4, 0.4] as V3, tilt: 0.55 },
+};
+
 function sportsParts(): Part[] {
-  const soccer = sphere([0.05, -0.18, 0.55], 0.92, (raw) => {
-    const d = rotX(rotZ(raw, 0.3), 0.25);
-    let best = -2, second = -2, pent = false;
-    for (const c of ICO) { const s = dot(d, c) - 0.035; if (s > best) { second = best; best = s; pent = true; } else if (s > second) second = s; }
-    for (const c of DODECA) { const s = dot(d, c); if (s > best) { second = best; best = s; pent = false; } else if (s > second) second = s; }
-    if (best - second < 0.012) return hex(0x8c9196);
-    return pent ? hex(0x15191e) : hex(0xf4f3ee);
-  });
-  const basket = sphere([-1.2, 0.55, -0.45], 0.86, (raw) => {
-    const d = rotZ(raw, -0.45);
-    const w = 0.028;
-    const seam = Math.abs(d[1]) < w || Math.abs(d[0]) < w || Math.abs(Math.abs(d[2]) - 0.58 - 0.32 * d[0] * d[0]) < w * 1.2;
-    if (seam) return hex(0x1d1410);
-    // pebbled leather
-    const grain = 0.92 + 0.08 * Math.sin(raw[0] * 90) * Math.sin(raw[1] * 87) * Math.sin(raw[2] * 93);
-    return mul(hex(0xe2692a), grain);
-  });
-  const tennis = sphere([1.18, 0.95, -0.05], 0.44, (raw) => {
-    const d = rotZ(rotX(raw, 0.6), 0.4);
-    let m = 9;
-    for (const s of TENNIS_SEAM) m = Math.min(m, 1 - dot(d, s));
-    return m < 0.0045 ? hex(0xf7f5ea) : hex(0xcfe04a);
-  }, { density: 1.25 });
+  const soccer = sphere(BALLS.soccer.center, BALLS.soccer.radius, soccerColor);
+  const basket = sphere(BALLS.basket.center, BALLS.basket.radius, basketColor);
+  const tennis = sphere(BALLS.tennis.center, BALLS.tennis.radius, tennisColor, { density: 1.25 });
   // American football: prolate spheroid, tilted, with laces
-  const tilt = 0.55;
+  const { radii, tilt, center } = BALLS.football;
   const football: Part = {
     area: 3.4,
     sample: (r) => {
       const d = unitDir(r);
-      const radii: V3 = [0.68, 0.4, 0.4];
       const local: V3 = [d[0] * radii[0], d[1] * radii[1], d[2] * radii[2]];
       const n = norm([local[0] / (radii[0] ** 2), local[1] / (radii[1] ** 2), local[2] / (radii[2] ** 2)]);
-      let c = mul(hex(0x7a3d1e), 0.95 + 0.05 * Math.sin(d[0] * 70) * Math.sin(d[2] * 70));
-      const facing = d[2] > 0.82 && Math.abs(d[0]) < 0.42;
-      if (facing && (Math.abs(d[1]) < 0.035 || (Math.abs(d[1]) < 0.12 && Math.abs(((d[0] + 0.42) % 0.105) - 0.05) < 0.016))) c = hex(0xf6f1e4);
-      if (Math.abs(Math.abs(d[0]) - 0.74) < 0.035) c = hex(0xf6f1e4);
-      const p = add(rotZ(local, tilt), [1.25, -0.82, 0.05]);
-      return { p, n: rotZ(n, tilt), c };
+      return { p: add(rotZ(local, tilt), center), n: rotZ(n, tilt), c: footballColor(d) };
     },
   };
   return [
-    tagged(soccer, { extra: [0.05, -0.18, 0.55] }),
-    tagged(basket, { extra: [-1.2, 0.55, -0.45] }),
-    tagged(tennis, { extra: [1.18, 0.95, -0.05] }),
-    tagged(football, { extra: [1.25, -0.82, 0.05] }),
+    tagged(soccer, { extra: BALLS.soccer.center }),
+    tagged(basket, { extra: BALLS.basket.center }),
+    tagged(tennis, { extra: BALLS.tennis.center }),
+    tagged(football, { extra: center }),
   ];
 }
 
 /* ---------- 03 — wheel loader ---------- */
 
-const LOADER_PIVOT: [number, number] = [0.05, 0.25];
+export const LOADER_PIVOT: [number, number] = [0.05, 0.25];
 const ARM = { tag: 1 };
+/** Bucket profile (quadratic Bézier in x/y) and half-width — shared with the solid model. */
+export const BUCKET = { p0: [1.68, 0.48] as [number, number], p1: [1.38, -1.05] as [number, number], p2: [2.42, -0.86] as [number, number], W: 0.82 };
 
 function loaderParts(): Part[] {
   const YEL = hex(0xf3b52c);
@@ -404,12 +423,11 @@ function loaderParts(): Part[] {
     parts.push(tagged(tube([0.35, -0.22, z * 0.6], [1.15, 0.1, z * 0.6], 0.06, STEEL, { density: 1.4 }), ARM));
   }
   // bucket: curved scoop surface + side plates + steel cutting edge
-  const p0: [number, number] = [1.68, 0.48], p1: [number, number] = [1.38, -1.05], p2: [number, number] = [2.42, -0.86];
+  const { p0, p1, p2, W } = BUCKET;
   const curve = (t: number): [number, number] => [
     (1 - t) ** 2 * p0[0] + 2 * (1 - t) * t * p1[0] + t * t * p2[0],
     (1 - t) ** 2 * p0[1] + 2 * (1 - t) * t * p1[1] + t * t * p2[1],
   ];
-  const W = 0.82;
   parts.push({
     area: 1.7 * W * 2,
     density: 1.9,
@@ -440,8 +458,9 @@ function loaderParts(): Part[] {
 
 /* ---------- 04 — vault ---------- */
 
-const VAULT_HINGE: [number, number] = [-1.16, 0.34];
-const DOOR_R = 1.06;
+export const VAULT_HINGE: [number, number] = [-1.16, 0.34];
+export const DOOR_R = 1.06;
+export const VAULT_BARS: V3[] = [[-0.5, -0.72, -0.5], [0, -0.72, -0.5], [0.5, -0.72, -0.5], [-0.25, -0.55, -0.5], [0.25, -0.55, -0.5], [0, -0.38, -0.5]];
 
 function vaultParts(): Part[] {
   const BODY = hex(0x66747f);
@@ -463,8 +482,7 @@ function vaultParts(): Part[] {
   parts.push(cylinder([0, 0, -0.45], 2, DOOR_R + 0.05, 1.28, (_l, onCap) => (onCap ? INNER : hex(0x222b33)), { caps: false, density: 0.7 }));
   parts.push(cylinder([0, 0, -1.08], 2, DOOR_R + 0.05, 0.001, () => INNER, { density: 0.6 }));
   // stacked gold bars inside
-  const bars: V3[] = [[-0.5, -0.72, -0.5], [0, -0.72, -0.5], [0.5, -0.72, -0.5], [-0.25, -0.55, -0.5], [0.25, -0.55, -0.5], [0, -0.38, -0.5]];
-  for (const c of bars) parts.push(box(c, [0.44, 0.15, 0.6], (_l, edge) => (edge < 0.025 ? GOLD_DEEP : BAR), { density: 2 }));
+  for (const c of VAULT_BARS) parts.push(box(c, [0.44, 0.15, 0.6], (_l, edge) => (edge < 0.025 ? GOLD_DEEP : BAR), { density: 2 }));
   // frame ring
   parts.push(torus([0, 0, 0.22], DOOR_R + 0.1, 0.06, () => GOLD, { density: 1.6 }));
   // hinges
@@ -539,5 +557,12 @@ export function createMorphTargets(count: number): MorphSet {
   result.vaultHub = [(0 - v.center[0]) * v.scale, (0 - v.center[1]) * v.scale];
   const l = built.loader;
   result.loaderPivot = [(LOADER_PIVOT[0] - l.center[0]) * l.scale, (LOADER_PIVOT[1] - l.center[1]) * l.scale];
+  result.vaultBars = [(0 - v.center[0]) * v.scale, (-0.58 - v.center[1]) * v.scale, (-0.5 - v.center[2]) * v.scale];
+  // how each form's design space maps into the normalised space the particles live in
+  result.frames = {
+    sports: { center: built.sports.center, scale: built.sports.scale },
+    loader: { center: l.center, scale: l.scale },
+    vault: { center: v.center, scale: v.scale },
+  };
   return result;
 }

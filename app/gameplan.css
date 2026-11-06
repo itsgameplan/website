@@ -280,3 +280,24 @@ body { background-image: radial-gradient(ellipse 80% 70% at 60% 30%, #12263a 0%,
 @media (max-width: 700px) {
   .gp-morph-scene { width: auto; height: auto; min-height: 0; top: 0; }
 }
+
+/* ===== Momentum case study (visuals live in the WebGL scene) ===== */
+.gp-momentum { position: relative; height: 320svh; color: var(--gp-cream); }
+.gp-momentum-sticky { position: sticky; top: 0; height: 100svh; overflow: hidden; }
+.gp-momentum-copy { position: absolute; left: 6.5%; bottom: 9svh; max-width: min(34%, 470px); z-index: 2; }
+.gp-momentum .gp-eyebrow { margin-bottom: 26px; }
+.gp-momentum .gp-heading { font-size: clamp(56px, 5.6vw, 96px); max-width: none; }
+.gp-momentum .gp-heading em { color: #9fb8e6; }
+.gp-momentum-desc { font-size: clamp(16px, 1.3vw, 20px); line-height: 1.6; color: rgba(245,242,233,.78); margin: 26px 0 18px; }
+.gp-momentum-services { font-size: 10px; letter-spacing: .12em; line-height: 1.9; color: var(--gp-amber); margin: 0; }
+.gp-momentum-flavour { position: absolute; right: 6.5%; bottom: 9svh; font-size: 10px; letter-spacing: .16em; color: rgba(245,242,233,.5); }
+.gp-ar .gp-momentum-copy { left: auto; right: 6.5%; }
+.gp-ar .gp-momentum-flavour { right: auto; left: 6.5%; }
+@media (max-width: 700px) {
+  .gp-momentum-copy { left: 7%; right: 7%; bottom: 5svh; max-width: none; }
+  .gp-momentum .gp-heading { font-size: clamp(46px, 11vw, 68px); }
+  .gp-momentum-desc { font-size: 15px; margin: 16px 0 10px; }
+  .gp-momentum-flavour { display: none; }
+}
+/* extra scroll room for the camera to fly into the opened vault */
+.gp-advisory { min-height: 185svh; }

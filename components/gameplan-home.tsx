@@ -9,6 +9,7 @@ import { HeroSection } from "@/components/sections/hero-section";
 import { AboutSection } from "@/components/sections/about-section";
 import { VenturesSection } from "@/components/sections/ventures-section";
 import { AdvisorySection } from "@/components/sections/advisory-section";
+import { MomentumSection } from "@/components/sections/momentum-section";
 import { ProcessSection } from "@/components/sections/process-section";
 import { ApplySection } from "@/components/sections/apply-section";
 import { chapters, type Chapter, type Dictionary, type Locale } from "@/i18n/translations";
@@ -103,6 +104,7 @@ export function GameplanHome({ locale, t }: { locale: Locale; t: Dictionary }) {
         <VenturesSection t={t} />
         <AdvisorySection t={t} />
       </div>
+      <MomentumSection t={t} />
       <ProcessSection t={t} />
       <ApplySection t={t} />
     </main>

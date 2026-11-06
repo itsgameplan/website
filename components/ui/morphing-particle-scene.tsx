@@ -3,10 +3,14 @@
 import { useEffect, useRef } from "react";
 import * as THREE from "three";
 import { createMorphTargets, type FormName } from "@/lib/morph-shapes";
+import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
+import { createMomentumStage, sampleMomentumPoints } from "@/components/ui/momentum-stage";
+import { createSolidForms } from "@/components/ui/solid-forms";
 
 const FORMS: FormName[] = ["origin", "sports", "loader", "vault"];
-/** Sections that drive the morph (first four) and the background palette (all). */
-const SECTION_IDS = ["home", "about", "ventures", "advisory", "process", "apply"];
+/** Sections that drive the morph (first four), the Momentum stage (fifth) and the background palette (all). */
+const SECTION_IDS = ["home", "about", "ventures", "advisory", "momentum", "process", "apply"];
+const MOMENTUM = 4;
 
 const clamp = (v: number, a = 0, b = 1) => Math.max(a, Math.min(b, v));
 const smooth = (v: number) => v * v * (3 - 2 * v);
@@ -21,7 +25,7 @@ const POSE = [
   { rx: 0.12, ry: 0.0, x: 0, scale: 1.0 },
   { rx: 0.1, ry: -0.28, x: 0.44, scale: 0.92 },
   { rx: 0.2, ry: -0.62, x: 0, scale: 1.0 },
-  { rx: 0.08, ry: 0.36, x: 0.42, scale: 1.14 },
+  { rx: 0.06, ry: 0.0, x: 0, scale: 1.08 },
 ];
 
 /** Void palette per section: gradient top, gradient bottom, light-beam colour. */
@@ -30,6 +34,7 @@ const PALETTES: [number, number, number][] = [
   [0x0f2c42, 0x050d16, 0x8ccfff], // about — deep ocean, cool light
   [0x2b1a0b, 0x0b0704, 0xffb44a], // ventures — umber, amber light
   [0x121d33, 0x05070d, 0xffd27a], // advisory — ink blue, gold light
+  [0x1b2a4c, 0x070a16, 0xa9c2f0], // momentum — periwinkle void, soft blue light
   [0x22163a, 0x08060f, 0xc4a2ff], // process — violet void
   [0x3d150b, 0x100503, 0xff8a5a], // apply — ember
 ];
@@ -173,6 +178,9 @@ const vertexShader = /* glsl */ `
   attribute vec3 aCol3;
   attribute vec2 aMeta;  // x: random seed, y: vault part / dust tag
   attribute vec4 aExtra; // xyz: ball centre (sports), w: lift-arm flag (loader)
+  attribute vec3 aGlass;     // target point on a Momentum object, in that object's space
+  attribute float aGlassPart; // which object: 0 glass, 1 logo, 2-5 sachets
+  attribute vec3 aGlassCol;  // colour of that spot on the object
 
   uniform float uStage;
   uniform float uTime;
@@ -185,11 +193,16 @@ const vertexShader = /* glsl */ `
   uniform float uScale;
   uniform float uHover;
   uniform float uIdle;
+  uniform float uSolid;  // 1 while the solid model has replaced the particles
   uniform vec4 uLocal;   // x: stream energy, y: balls apart, z: arm lift
   uniform vec2 uPointer;
   uniform vec2 uHinge;
   uniform vec2 uHub;
   uniform vec2 uPivot;
+  uniform mat4 uMT[6];        // each Momentum object's space → this object's space
+  uniform float uToGlass;     // vault → Momentum morph progress
+  uniform float uSolidM;      // 1 while the solid Momentum objects have replaced the particles
+  uniform float uGlassPoint;  // point-size factor so particles read at the stage's scale
 
   varying vec3 vColor;
   varying float vAlpha;
@@ -249,6 +262,15 @@ const vertexShader = /* glsl */ `
     return p;
   }
 
+  mat4 targetMat(float k) {
+    if (k < 0.5) return uMT[0];
+    if (k < 1.5) return uMT[1];
+    if (k < 2.5) return uMT[2];
+    if (k < 3.5) return uMT[3];
+    if (k < 4.5) return uMT[4];
+    return uMT[5];
+  }
+
   vec3 posAt(float k) {
     if (k < 0.5) return gStreamPos;
     if (k < 1.5) return sportsPos();
@@ -289,7 +311,17 @@ const vertexShader = /* glsl */ `
     p = mix(dir * (3.2 + r * 2.4), p, ie);
 
     if (dust) p = rotY(p, uTime * 0.03 * uIdle);
-    p += dir * uDisperse * (1.2 + r * 1.8);
+
+    // 04 → Momentum: the vault's particles stream into the glass, logo and sachets
+    float gs = 0.0;
+    if (!dust && uToGlass > 0.0) {
+      gs = clamp(uToGlass * 1.7 - r * 0.7, 0.0, 1.0);
+      gs = gs * gs * gs * (gs * (gs * 6.0 - 15.0) + 10.0);
+      vec3 gp = (targetMat(aGlassPart) * vec4(aGlass, 1.0)).xyz;
+      p = mix(p, gp, gs) + dir * sin(3.14159265 * gs) * 0.22;
+    }
+    // finale: everything breaks back into particles that scatter and vanish
+    p += dir * uDisperse * (0.5 + r * 1.4);
 
     // smaller and fainter the further a particle is from the centre
     float fade = smoothstep(1.6, 4.6, length(p));
@@ -302,11 +334,18 @@ const vertexShader = /* glsl */ `
 
     vec4 mv = viewMatrix * world;
     gl_Position = projectionMatrix * mv;
-    float size = uSize * (dust ? 0.7 : 1.0) * (0.85 + r * 0.3) * (1.0 + arc * 0.2) * (1.0 - 0.65 * fade);
+    // particles fade and shrink away while the solid model materialises in their place
+    float solid = dust ? 0.0 : uSolid;
+    float size = uSize * (dust ? 0.7 : 1.0) * (0.85 + r * 0.3) * (1.0 + arc * 0.2) * (1.0 - 0.65 * fade) * (1.0 - 0.6 * solid);
+    // the camera is inside the vault by now, so scale points to the glass's framing as soon as the morph begins
+    size *= mix(1.0, uGlassPoint, max(gs, clamp(uToGlass * 3.0, 0.0, 1.0)));
     gl_PointSize = clamp(size * uScale / -mv.z, 0.8, 12.0);
 
     vColor = mix(colAt(i), colAt(i + 1.0), e) * (1.0 + infl * 0.35);
-    vAlpha = (dust ? 0.35 : 1.0) * (1.0 - uDisperse) * ie * (1.0 - 0.92 * fade);
+    vColor = mix(vColor, aGlassCol, gs);
+    // dust bows out as the vault turns into Momentum; the rest hand over to (and back from) the solid objects
+    float handover = dust ? (1.0 - uToGlass) : (1.0 - uSolidM);
+    vAlpha = (dust ? 0.35 : 1.0) * (1.0 - uDisperse) * ie * (1.0 - 0.92 * fade) * (1.0 - solid) * handover;
   }
 `;
 
@@ -369,6 +408,10 @@ export function MorphingParticleScene() {
     }
     geometry.setAttribute("aMeta", new THREE.BufferAttribute(meta, 2));
     geometry.setAttribute("aExtra", new THREE.BufferAttribute(extra, 4));
+    const momentumPoints = sampleMomentumPoints(count);
+    geometry.setAttribute("aGlass", new THREE.BufferAttribute(momentumPoints.pos, 3));
+    geometry.setAttribute("aGlassPart", new THREE.BufferAttribute(momentumPoints.part, 1));
+    geometry.setAttribute("aGlassCol", new THREE.BufferAttribute(momentumPoints.col, 3));
     geometry.boundingSphere = new THREE.Sphere(new THREE.Vector3(), 8);
 
     const uniforms = {
@@ -383,6 +426,11 @@ export function MorphingParticleScene() {
       uScale: { value: 500 },
       uHover: { value: 0 },
       uIdle: { value: reducedMotion ? 0 : 1 },
+      uSolid: { value: 0 },
+      uMT: { value: Array.from({ length: 6 }, () => new THREE.Matrix4()) },
+      uToGlass: { value: 0 },
+      uSolidM: { value: 0 },
+      uGlassPoint: { value: 1 },
       uLocal: { value: new THREE.Vector4() },
       uPointer: { value: new THREE.Vector2(99, 99) },
       uHinge: { value: new THREE.Vector2(...targets.vaultHinge) },
@@ -443,9 +491,30 @@ export function MorphingParticleScene() {
     ambient.frustumCulled = false;
     ambient.renderOrder = 1;
 
+    const momentum = createMomentumStage(renderer);
+    const solids = createSolidForms(targets);
+    model.add(solids.sports, solids.loader, solids.vault);
     const scene = new THREE.Scene();
-    scene.add(background, ambient, model);
-    const camera = new THREE.PerspectiveCamera(32, 1, 0.1, 100);
+    // the Momentum stage hangs off a camera-relative anchor (see frame())
+    const anchor = new THREE.Group();
+    anchor.matrixAutoUpdate = false;
+    anchor.add(momentum.group);
+    scene.add(background, ambient, model, anchor);
+
+    // studio lighting for the solid models (the particle and void shaders are unlit)
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1.05;
+    const pmrem = new THREE.PMREMGenerator(renderer);
+    const envMap = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+    scene.environment = envMap;
+    scene.environmentIntensity = 0.85;
+    const keyLight = new THREE.DirectionalLight(0xfff1dc, 2.4);
+    keyLight.position.set(-4, 6, 7);
+    const rimLight = new THREE.DirectionalLight(0xbfd6ff, 1.4);
+    rimLight.position.set(5, 2, -4);
+    scene.add(keyLight, rimLight);
+    const camera = new THREE.PerspectiveCamera(32, 1, 0.05, 100);
+    const vaultBars = new THREE.Vector3(...targets.vaultBars);
 
     renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.75));
     renderer.domElement.setAttribute("aria-hidden", "true");
@@ -455,6 +524,7 @@ export function MorphingParticleScene() {
     /* ---- layout ---- */
     let anchors = SECTION_IDS.map(() => 0);
     let trackEnd = 1;
+    let momentumEnd = 2;
     let viewH = window.innerHeight;
     let halfW = 6, halfH = 3.3, camDist = 10;
     let portrait = false;
@@ -475,6 +545,7 @@ export function MorphingParticleScene() {
       camera.updateProjectionMatrix();
       renderer.getDrawingBufferSize(drawSize);
       uniforms.uScale.value = drawSize.y / (2 * Math.tan(vfov / 2));
+      momentum.setPointScale(uniforms.uScale.value);
       bgUniforms.uAspect.value = camera.aspect;
       ambientUniforms.uHalf.value.set(halfW, halfH);
       anchors = SECTION_IDS.map((id) => {
@@ -482,6 +553,8 @@ export function MorphingParticleScene() {
         return el ? el.getBoundingClientRect().top + window.scrollY : 0;
       });
       trackEnd = track!.getBoundingClientRect().bottom + window.scrollY;
+      const m = document.getElementById(SECTION_IDS[MOMENTUM]);
+      momentumEnd = m ? m.getBoundingClientRect().bottom + window.scrollY : trackEnd + 1;
     }
     resize();
     const resizeObserver = new ResizeObserver(resize);
@@ -502,11 +575,24 @@ export function MorphingParticleScene() {
       const local0 = span(y, 0, A[1] - vh * 0.45);                  // stream energises
       const local1 = span(y, A[1] - vh * 0.3, A[2] - vh * 0.6);     // balls drift apart
       const local2 = span(y, A[2] - vh * 0.3, A[3] - vh * 0.6);     // arm lifts, camera pans
-      const local3 = span(y, A[3] - vh * 0.3, trackEnd - vh * 0.6); // vault unlocks and opens
+      const local3 = span(y, A[3] - vh * 0.3, trackEnd - vh * 0.7); // vault opens, camera flies in
       let tone = 0;
       for (let k = 1; k < SECTION_IDS.length; k++) tone += span(y, A[k] - vh * 0.75, A[k] - vh * 0.05);
-      const visible = clamp((trackEnd - y - vh * 0.05) / (vh * 0.45));
-      return { stage, local0, local1, local2, local3, tone, visible, y };
+      // Vault → Momentum, all from where the camera already is (no pull-back):
+      // the bar particles stream into the glass, then hand over to the real glass, logo and sachets
+      const mA = A[MOMENTUM];
+      const mE = momentumEnd;
+      // 1. vault particles stream into the glass, logo and sachets
+      const toGlass = span(y, mA - vh * 0.65, mA - vh * 0.15);
+      // 2. once they have settled, the solid objects dissolve in over them (and back out at the end)
+      const mReveal = span(y, mA - vh * 0.22, mA + vh * 0.08) * (1 - span(y, mE - vh * 1.2, mE - vh * 0.9));
+      // 3. the pour plays while the copy is pinned
+      const mProgress = span(y, mA + vh * 0.08, mE - vh * 1.25);
+      // 4. finale: the particles the objects dissolved back into scatter and vanish
+      const disperse = span(y, mE - vh * 0.95, mE - vh * 0.5);
+      // once Momentum has gone, the (now empty) camera eases back to its home framing
+      const homeBack = span(y, mE - vh * 0.5, mE - vh * 0.1);
+      return { stage, local0, local1, local2, local3, tone, toGlass, mReveal, mProgress, disperse, homeBack, y };
     }
 
     /* ---- pointer ---- */
@@ -538,6 +624,17 @@ export function MorphingParticleScene() {
     let last = performance.now();
     const start = last;
     const focus = new THREE.Vector3();
+    const camPos = new THREE.Vector3();
+    const camLook = new THREE.Vector3();
+    const barsWorld = new THREE.Vector3();
+    const dollyPos = new THREE.Vector3();
+    const dollyOffset = new THREE.Vector3(0, 0.3, 2.15); // where the camera ends up, relative to the bars
+    const homePos = new THREE.Vector3();
+    const homeLook = new THREE.Vector3();
+    const focusM = new THREE.Vector3();
+    const anchorScale = new THREE.Matrix4();
+    const modelInverse = new THREE.Matrix4();
+    const homeCamInverse = new THREE.Matrix4();
 
     function applyPalette(tone: number) {
       const t = clamp(tone, 0, PALETTES.length - 1);
@@ -565,8 +662,12 @@ export function MorphingParticleScene() {
         state.local1 = damp(state.local1, target.local1, 5, dt);
         state.local2 = damp(state.local2, target.local2, 5, dt);
         state.local3 = damp(state.local3, target.local3, 5, dt);
+        state.mReveal = damp(state.mReveal, target.mReveal, 5, dt);
+        state.disperse = damp(state.disperse, target.disperse, 5, dt);
+        state.mProgress = damp(state.mProgress, target.mProgress, 5, dt);
         state.tone = damp(state.tone, target.tone, 3, dt);
-        state.visible = damp(state.visible, target.visible, 6, dt);
+        state.toGlass = damp(state.toGlass, target.toGlass, 5, dt);
+        state.homeBack = damp(state.homeBack, target.homeBack, 5, dt);
         state.scroll = damp(state.scroll, target.y, 5, dt);
         state.hover = damp(state.hover, pointerInside ? 1 : 0, 5, dt);
         uniforms.uSpread.value = damp(uniforms.uSpread.value, 1 + Math.min(gap * 0.9, 0.9), 3, dt);
@@ -584,11 +685,15 @@ export function MorphingParticleScene() {
       // how present each form is right now (1 when settled, fades during morphs)
       const w = [0, 1, 2, 3].map((k) => clamp(1 - Math.abs(s - k)));
 
+      // vault: the camera flies in through the opening door towards the gold
+      const dolly = smooth(clamp((state.local3 - 0.15) / 0.85)) * w[3];
+      const calm = 1 - dolly; // hold the vault steady while the camera moves in
+
       // scroll-linked turning while each form plays its motion
-      const scrollTurn = w[1] * state.local1 * 0.5 + w[2] * state.local2 * 0.25 - w[3] * state.local3 * 0.15;
+      const scrollTurn = w[1] * state.local1 * 0.5 + w[2] * state.local2 * 0.25;
       const twirl = Math.sin(Math.PI * eased) * 0.9;
-      model.rotation.y = lerp(a.ry, b.ry, eased) + twirl + scrollTurn + Math.sin(t * 0.22) * 0.14 * idle + parallaxX * 0.35;
-      model.rotation.x = lerp(a.rx, b.rx, eased) + Math.sin(t * 0.17) * 0.04 * idle + parallaxY * 0.18;
+      model.rotation.y = lerp(a.ry, b.ry, eased) + twirl + scrollTurn + (Math.sin(t * 0.22) * 0.14 * idle + parallaxX * 0.35) * calm;
+      model.rotation.x = lerp(a.rx, b.rx, eased) + (Math.sin(t * 0.17) * 0.04 * idle + parallaxY * 0.18) * calm;
       const x = portrait ? 0 : lerp(a.x, b.x, eased) * halfW;
       const y = portrait ? halfH * 0.3 : 0;
       model.position.set(x, y + Math.sin(t * 0.6) * 0.05 * idle, 0);
@@ -596,8 +701,41 @@ export function MorphingParticleScene() {
 
       // loader: the camera pans upwards with the lifting arm
       const pan = smooth(state.local2) * w[2] * halfH * 0.3;
-      camera.position.set(0, pan, camDist);
-      camera.lookAt(0, pan, 0);
+      camPos.set(0, pan, camDist);
+      camLook.set(0, pan, 0);
+      if (dolly > 0.0001) {
+        model.updateMatrixWorld(true);
+        barsWorld.copy(vaultBars).applyMatrix4(model.matrixWorld);
+        camPos.lerp(dollyPos.copy(barsWorld).add(dollyOffset), dolly);
+        camLook.lerp(barsWorld, dolly);
+      }
+      // after Momentum the camera returns home (nothing 3D is on screen by then)
+      const back = smooth(clamp(state.homeBack));
+      camPos.lerp(homePos.set(0, 0, camDist), back);
+      camLook.lerp(homeLook.set(0, 0, 0), back);
+      camera.position.copy(camPos);
+      camera.lookAt(camLook);
+      camera.updateMatrixWorld();
+
+      // Momentum is anchored to the camera: it keeps its usual on-screen framing wherever the
+      // camera is (scaling about the camera keeps the projection identical), so it appears right
+      // where the gold bars were instead of after a zoom-out.
+      const mP = smooth(clamp(state.mReveal));
+      const k = camPos.distanceTo(camLook) / camDist;
+      homeCamInverse.makeTranslation(0, 0, -camDist); // home camera sits at (0, 0, camDist) looking down -z
+      anchor.matrix.copy(camera.matrixWorld).multiply(anchorScale.makeScale(k, k, k)).multiply(homeCamInverse);
+      anchor.matrixWorldNeedsUpdate = true;
+      momentum.group.position.set(0, portrait ? halfH * 0.32 : -0.1, 0);
+      momentum.group.scale.setScalar(Math.min(1, halfW / 3.4));
+      momentum.update({ reveal: mP, progress: state.mProgress, time: t * idle });
+      anchor.updateMatrixWorld(true);
+      model.updateMatrixWorld(true);
+      // particle targets follow each Momentum object (sachets bob and pour, the logo floats)
+      modelInverse.copy(model.matrixWorld).invert();
+      momentum.targets.forEach((obj, n) => uniforms.uMT.value[n].copy(modelInverse).multiply(obj.matrixWorld));
+      uniforms.uToGlass.value = state.toGlass;
+      uniforms.uSolidM.value = mP;
+      uniforms.uGlassPoint.value = k;
 
       uniforms.uLocal.value.set(state.local0, state.local1, smooth(state.local2), state.local3);
       // vault: unlock the handle, then swing the door fully open
@@ -605,14 +743,22 @@ export function MorphingParticleScene() {
       uniforms.uDoor.value = smooth(clamp((state.local3 - 0.3) / 0.7)) * 1.9;
       uniforms.uStage.value = s;
       uniforms.uTime.value = t;
-      uniforms.uHover.value = state.hover;
-      uniforms.uDisperse.value = 1 - smooth(clamp(state.visible));
-      points.visible = state.visible > 0.002;
+      // cursor push is off for the Momentum morph (the camera is very close there, so it would scatter the glass)
+      uniforms.uHover.value = state.hover * (1 - smooth(clamp(state.toGlass / 0.25)));
+      uniforms.uDisperse.value = smooth(clamp(state.disperse));
+      points.visible = uniforms.uDisperse.value < 0.999;
+
+      // once particles settle into a form, the solid model dissolves in and takes over;
+      // it dissolves back out as soon as the next morph (or the vault → glass morph) begins
+      const settle = (n: number) => smooth(clamp((w[n] - 0.55) / 0.4));
+      const reveal: [number, number, number] = [settle(1), settle(2), settle(3) * (1 - smooth(clamp(state.toGlass / 0.3)))];
+      uniforms.uSolid.value = Math.max(...reveal);
+      solids.update({ reveal, apart: state.local1, lift: smooth(state.local2) * 0.95, spin: uniforms.uSpin.value, door: uniforms.uDoor.value });
 
       applyPalette(state.tone);
-      focus.copy(model.position).project(camera);
+      focus.copy(model.position).lerp(momentum.group.getWorldPosition(focusM), Math.max(mP, state.toGlass)).project(camera);
       bgUniforms.uFocus.value.set(focus.x, focus.y);
-      bgUniforms.uFocusAmount.value = state.visible;
+      bgUniforms.uFocusAmount.value = Math.max(1 - dolly, state.toGlass, mP) * (1 - back);
       bgUniforms.uTime.value = t * idle;
       bgUniforms.uScroll.value = state.scroll / viewH;
       bgUniforms.uTone.value = clamp(state.tone, 0, PALETTES.length - 1);
@@ -646,6 +792,10 @@ export function MorphingParticleScene() {
       (background.material as THREE.Material).dispose();
       ambientGeometry.dispose();
       (ambient.material as THREE.Material).dispose();
+      momentum.dispose();
+      solids.dispose();
+      envMap.dispose();
+      pmrem.dispose();
       renderer.dispose();
       renderer.domElement.remove();
     };
