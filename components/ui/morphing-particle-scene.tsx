@@ -574,16 +574,21 @@ export function MorphingParticleScene() {
     // built one icon per idle slot (~40 ms each) so the page never stalls; shown once all are in
     let iconsReady = false;
     let iconsBuilt = 0;
+    // only the subject's particles form icons: the ambient dust (tag 3, at the end of the index range)
+    // keeps drifting, so the icons are sampled over exactly the non-dust particles — otherwise the
+    // last slice along the sort axis (the icons' upper-right corner) would be handed to dust and stay empty
+    let iconParticles = count;
+    while (iconParticles > 0 && targets.parts[iconParticles - 1] > 2.5) iconParticles--;
     const hasIdle = typeof window.requestIdleCallback === "function";
     let iconJob: number | ReturnType<typeof setTimeout> = 0;
     const schedule = () => { iconJob = hasIdle ? window.requestIdleCallback(fillNextIcon, { timeout: 1500 }) : globalThis.setTimeout(fillNextIcon, 120); };
     function fillNextIcon() {
       const k = iconsBuilt;
-      const icon = createAdviseIcon(k, count);
+      const icon = createAdviseIcon(k, iconParticles);
       const pos = iconPosTex.image.data as Float32Array;
       const col = iconColTex.image.data as Uint8Array;
       const base = k * iconRows * ICON_TEX_W;
-      for (let i = 0; i < count; i++) {
+      for (let i = 0; i < iconParticles; i++) {
         const o = (base + i) * 4;
         pos[o] = icon.positions[i * 3]; pos[o + 1] = icon.positions[i * 3 + 1]; pos[o + 2] = icon.positions[i * 3 + 2]; pos[o + 3] = 1;
         col[o] = icon.colors[i * 3] * 255; col[o + 1] = icon.colors[i * 3 + 1] * 255; col[o + 2] = icon.colors[i * 3 + 2] * 255; col[o + 3] = 255;
@@ -1013,8 +1018,8 @@ export function MorphingParticleScene() {
         state.homeBack = damp(state.homeBack, target.homeBack, 5, dt);
         state.toSports = damp(state.toSports, target.toSports, 5, dt);
         state.sReveal = damp(state.sReveal, target.sReveal, 5, dt);
-        state.iconMix = damp(state.iconMix, target.iconMix, 4.5, dt);
-        state.iconQ = damp(state.iconQ, target.iconQ, 4.5, dt);
+        state.iconMix = damp(state.iconMix, target.iconMix, 7, dt);
+        state.iconQ = damp(state.iconQ, target.iconQ, 8, dt);
         state.scroll = damp(state.scroll, target.y, 5, dt);
         state.hover = damp(state.hover, pointerInside ? 1 : 0, 5, dt);
         uniforms.uSpread.value = damp(uniforms.uSpread.value, 1 + Math.min(gap * 0.9, 0.9), 3, dt);

@@ -17,14 +17,14 @@ const smoothstep = (a: number, b: number, v: number) => { const t = clamp((v - a
 export function adviseTimeline(scrollY: number, top: number, height: number, viewH: number) {
   const pinLength = Math.max(1, height - viewH);
   const pinned = clamp((scrollY - top) / pinLength);
-  const formIn = clamp((scrollY - (top - viewH * 0.55)) / (viewH * 0.55 + pinLength * 0.03));
-  const q = clamp((pinned - 0.04) / 0.84) * (ADVISE_ICON_COUNT - 1);
+  const formIn = clamp((scrollY - (top - viewH * 0.6)) / (viewH * 0.6));
+  const q = clamp((pinned - 0.02) / 0.9) * (ADVISE_ICON_COUNT - 1);
   return { mix: formIn, q, pinned };
 }
 
 /** which two icons to blend and how far (each icon holds, then morphs into the next) */
 export function adviseIconFrame(q: number) {
   const a = Math.min(ADVISE_ICON_COUNT - 2, Math.floor(q));
-  const f = smoothstep(0.5, 0.95, q - a);
+  const f = smoothstep(0.55, 0.9, q - a);
   return { a, b: a + 1, f, active: f > 0.5 ? a + 1 : a };
 }

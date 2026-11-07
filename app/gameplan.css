@@ -749,7 +749,7 @@ html.lenis, .lenis.lenis-smooth { scroll-behavior: auto !important; }
 @media (max-width: 700px) { .gp-built { min-height: 0; padding: 110px 0 90px; } .gp-built-title { font-size: clamp(42px, 11.5vw, 70px); } }
 
 /* ===== What we offer — we advise: pinned copy while the strand becomes one icon per service ===== */
-.gp-advise { --ap: 0; position: relative; z-index: 2; height: 520svh; color: var(--gp-cream); }
+.gp-advise { --ap: 0; position: relative; z-index: 2; height: 330svh; color: var(--gp-cream); }
 .gp-advise-sticky { position: sticky; top: 0; height: 100svh; display: flex; align-items: center; padding: 0 6.5%; }
 .gp-advise-copy { width: min(46%, 600px); }
 .gp-advise-label { display: block; font-size: 11px; letter-spacing: .16em; color: var(--gp-amber); margin-bottom: 18px; }
@@ -771,7 +771,7 @@ html.lenis, .lenis.lenis-smooth { scroll-behavior: auto !important; }
 .gp-ar .gp-advise-bar span { transform-origin: right; }
 .gp-advise-cta { gap: 22px; }
 @media (max-width: 700px) {
-  .gp-advise { height: 480svh; }
+  .gp-advise { height: 310svh; }
   .gp-advise-sticky { align-items: flex-end; padding: 0 7% 5svh; }
   .gp-advise-copy { width: 100%; }
   .gp-advise .gp-advise-title { font-size: clamp(44px, 12vw, 72px); }
