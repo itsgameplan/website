@@ -11,7 +11,7 @@ export function HeroSection({ t, onNavigate, replayKey }: { t: Dictionary; repla
             <button className="gp-primary" onClick={() => onNavigate("ventures")}>{t.explore}<ArrowUpRight size={19}/></button>
           </div>
         </div>
-        <div className="gp-hero-footer"><span>© GAMEPLAN 2026</span><button onClick={() => onNavigate("ventures")}>{t.scroll} <ArrowDownRight size={16}/></button><span>{t.heroSignoff}</span></div>    
+        <div className="gp-hero-footer"><span>© GAMEPLAN 2026</span><button onClick={() => onNavigate("ventures")}>{t.scroll} <ArrowDownRight size={16}/></button><span aria-hidden="true" /></div>
       </section>
   );
 }

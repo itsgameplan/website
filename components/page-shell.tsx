@@ -7,6 +7,7 @@ import { SiteFooter } from "@/components/sections/site-footer";
 import { programs } from "@/i18n/programs";
 import type { Chapter, Dictionary, Locale } from "@/i18n/translations";
 import { pagePath, type SitePage } from "@/lib/site-links";
+import { LangLabel } from "@/components/ui/lang-label";
 
 export const NAV_PAGES: SitePage[] = ["venture", "advisory", "contact"];
 
@@ -32,7 +33,7 @@ export function PageShell({ locale, t, page, children }: { locale: Locale; t: Di
             </a>
           ))}
           <a className="gp-lang" href={pagePath(other, page)} hrefLang={other} aria-label={t.switchLanguage}>
-            {locale === "en" ? "EN / ع" : "ع / EN"}
+            <LangLabel locale={locale} />
           </a>
         </nav>
       </header>

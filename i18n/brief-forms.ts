@@ -46,12 +46,17 @@ export type BriefUi = {
   pickMany: string;
   pickOne: string;
   send: string;
+  sending: string;
   copy: string;
   copied: string;
   reset: string;
   edited: string;
   needName: string;
   needPick: string;
+  needEmail: string;
+  badEmail: string;
+  errorBody: string;
+  sendAnother: string;
   sentTitle: string;
   sentBody: string;
   hello: string;
@@ -103,15 +108,20 @@ export const briefForms: Record<Locale, { ui: BriefUi } & Record<BriefKind, Brie
       optional: "optional",
       pickMany: "pick any",
       pickOne: "pick one",
-      send: "SEND WITH MY EMAIL",
+      send: "SEND",
+      sending: "SENDING…",
       copy: "COPY MESSAGE",
       copied: "COPIED",
       reset: "Rewrite from my picks",
       edited: "You've edited the message — your picks won't overwrite it.",
       needName: "Add your name so we know who to reply to.",
       needPick: "Pick at least one option, or write a note.",
-      sentTitle: "Your email app should be open.",
-      sentBody: "The message is ready to send. Nothing opened? Copy the message and email it to",
+      needEmail: "Add your email so we can reply.",
+      badEmail: "That email doesn't look right. Please check it.",
+      errorBody: "Sorry, your message didn't go through. Your answers are still here, so please try again, or email us at",
+      sendAnother: "SEND ANOTHER MESSAGE",
+      sentTitle: "Thank you. Your message is on its way.",
+      sentBody: "We've received it and will reply to you soon at",
       hello: "Hi Gameplan team,",
       iAm: (name, company) => `I'm ${name}${company ? ` from ${company}` : ""}.`,
       replyTo: (email, phone) => [email && `Email: ${email}`, phone && `Phone: ${phone}`].filter(Boolean).join("\n"),
@@ -125,7 +135,7 @@ export const briefForms: Record<Locale, { ui: BriefUi } & Record<BriefKind, Brie
     venture: {
       title: "GOT A",
       accent: "GAMEPLAN?",
-      intro: "Click what fits — we'll write the message for you. Then send it from your own email.",
+      intro: "Click what fits — we'll write the message for you. Then hit send.",
       subject: "Venture Program application",
       groups: [
         {
@@ -152,7 +162,7 @@ export const briefForms: Record<Locale, { ui: BriefUi } & Record<BriefKind, Brie
     advisory: {
       title: "LET'S MAKE",
       accent: "THE NEXT MOVE.",
-      intro: "Click what fits — we'll write the brief for you. Then send it from your own email.",
+      intro: "Click what fits — we'll write the brief for you. Then hit send.",
       subject: "Gameplan Advisory enquiry",
       groups: [
         {
@@ -183,7 +193,7 @@ export const briefForms: Record<Locale, { ui: BriefUi } & Record<BriefKind, Brie
     contact: {
       title: "LET'S",
       accent: "TALK.",
-      intro: "Pick a topic, add your details, and we'll write the message. It sends from your own email.",
+      intro: "Pick a topic, add your details, and we'll write the message for you.",
       subject: "Hello from the Gameplan website",
       phoneFor: ["call", "whatsapp"],
       groups: [
@@ -220,15 +230,20 @@ export const briefForms: Record<Locale, { ui: BriefUi } & Record<BriefKind, Brie
       optional: "اختياري",
       pickMany: "اختر ما يناسب",
       pickOne: "اختر واحداً",
-      send: "أرسل من بريدي",
+      send: "إرسال",
+      sending: "جارٍ الإرسال…",
       copy: "انسخ الرسالة",
       copied: "تم النسخ",
       reset: "أعد الكتابة من اختياراتي",
       edited: "عدّلت الرسالة بنفسك، ولن تغيّرها اختياراتك.",
       needName: "أضف اسمك لنعرف لمن نرد.",
       needPick: "اختر خياراً واحداً على الأقل أو اكتب ملاحظة.",
-      sentTitle: "يُفترض أن يكون تطبيق البريد قد فُتح.",
-      sentBody: "الرسالة جاهزة للإرسال. لم يُفتح شيء؟ انسخ الرسالة وأرسلها إلى",
+      needEmail: "أضف بريدك الإلكتروني لنتمكن من الرد عليك.",
+      badEmail: "يبدو أن البريد الإلكتروني غير صحيح. يرجى التحقق منه.",
+      errorBody: "عذراً، لم تُرسل رسالتك. إجاباتك ما زالت هنا، فحاول مرة أخرى أو راسلنا على",
+      sendAnother: "أرسل رسالة أخرى",
+      sentTitle: "شكراً لك. رسالتك في طريقها إلينا.",
+      sentBody: "استلمناها وسنرد عليك قريباً على",
       hello: "مرحباً فريق جيم بلان،",
       iAm: (name, company) => `أنا ${name}${company ? ` من ${company}` : ""}.`,
       replyTo: (email, phone) => [email && `البريد: ${email}`, phone && `الهاتف: ${phone}`].filter(Boolean).join("\n"),
@@ -242,7 +257,7 @@ export const briefForms: Record<Locale, { ui: BriefUi } & Record<BriefKind, Brie
     venture: {
       title: "عندك",
       accent: "خطة؟",
-      intro: "اختر ما يناسبك وسنكتب الرسالة نيابة عنك، ثم أرسلها من بريدك.",
+      intro: "اختر ما يناسبك وسنكتب الرسالة نيابة عنك، ثم اضغط إرسال.",
       subject: "طلب الانضمام إلى برنامج المشاريع",
       groups: [
         {
@@ -269,7 +284,7 @@ export const briefForms: Record<Locale, { ui: BriefUi } & Record<BriefKind, Brie
     advisory: {
       title: "لنصنع",
       accent: "الخطوة التالية.",
-      intro: "اختر ما يناسبك وسنكتب الموجز نيابة عنك، ثم أرسله من بريدك.",
+      intro: "اختر ما يناسبك وسنكتب الموجز نيابة عنك، ثم اضغط إرسال.",
       subject: "استفسار عن استشارات جيم بلان",
       groups: [
         {
@@ -300,7 +315,7 @@ export const briefForms: Record<Locale, { ui: BriefUi } & Record<BriefKind, Brie
     contact: {
       title: "لنتحدث",
       accent: "معاً.",
-      intro: "اختر الموضوع وأضف بياناتك، وسنكتب الرسالة. تُرسل من بريدك أنت.",
+      intro: "اختر الموضوع وأضف بياناتك، وسنكتب الرسالة نيابة عنك.",
       subject: "مرحباً من موقع جيم بلان",
       phoneFor: ["call", "whatsapp"],
       groups: [

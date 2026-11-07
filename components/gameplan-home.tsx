@@ -6,6 +6,8 @@ import { SmoothScroll } from "@/components/ui/smooth-scroll";
 import dynamic from "next/dynamic";
 import { CrosshairCursor } from "@/components/ui/crosshair-cursor";
 import { HeroSection } from "@/components/sections/hero-section";
+import { SplitSection } from "@/components/sections/split-section";
+import { VerticalsSection } from "@/components/sections/verticals-section";
 import { AboutSection } from "@/components/sections/about-section";
 import { VenturesSection } from "@/components/sections/ventures-section";
 import { AdvisorySection } from "@/components/sections/advisory-section";
@@ -15,6 +17,7 @@ import { SiteFooter } from "@/components/sections/site-footer";
 import { chapters, type Chapter, type Dictionary, type Locale } from "@/i18n/translations";
 import { programs } from "@/i18n/programs";
 import { pagePath, type SitePage } from "@/lib/site-links";
+import { LangLabel } from "@/components/ui/lang-label";
 
 const NAV_PAGES: SitePage[] = ["venture", "advisory", "contact"];
 
@@ -88,7 +91,7 @@ export function GameplanHome({ locale, t }: { locale: Locale; t: Dictionary }) {
           {soundOn ? <Volume2 size={17}/> : <VolumeX size={17}/>}
         </button>
         <a className="gp-lang" href={locale === "en" ? "/ar" : "/en"} hrefLang={locale === "en" ? "ar" : "en"} aria-label={t.switchLanguage}>
-          {locale === "en" ? "EN / ع" : "ع / EN"}
+          <LangLabel locale={locale} />
         </a>
       </nav>
       {menuOpen && <div id="gp-chapter-menu" className="gp-menu">
@@ -110,11 +113,13 @@ export function GameplanHome({ locale, t }: { locale: Locale; t: Dictionary }) {
     <main>
       <div id="gp-morph-track" className="gp-morph-track">
         <HeroSection t={t} onNavigate={navClick} replayKey={replayKey} />
+        <SplitSection t={t} locale={locale} onNavigate={navClick} />
         <VenturesSection t={t} />
         <AdvisorySection t={t} />
       </div>
       <MomentumSection t={t} />
       <AboutSection t={t} onNavigate={navClick} />
+      <VerticalsSection t={t} />
       <ProcessSection t={t} locale={locale} />
     </main>
     <SiteFooter t={t} locale={locale} onNavigate={navClick} onReplay={() => { jump("home"); setReplayKey((k) => k + 1); }} />

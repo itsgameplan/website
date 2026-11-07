@@ -285,6 +285,7 @@ const vertexShader = /* glsl */ `
   uniform float uHover;
   uniform float uIdle;
   uniform float uStreamScale; // stretches the hero stream across the full screen width
+  uniform float uStreamPhase; // ripple phase along the stream, integrated per frame from its (scroll-driven) speed
   uniform float uSolid;  // 1 while the solid model has replaced the particles
   uniform vec4 uLocal;   // x: stream energy, y: balls apart, z: arm lift
   uniform vec2 uPointer;
@@ -320,10 +321,10 @@ const vertexShader = /* glsl */ `
     float tw = x * 0.8 + t * 0.35 + E * 2.2;
     float c = cos(tw), s = sin(tw);
     vec3 p = vec3(x * (1.0 + E * 0.3) * uStreamScale, yc * (1.0 + E * 0.8) + v * h * c, v * h * s * 1.15 + position.z);
-    // scroll makes the strands vibrate harder
-    float buzz = E * E;
-    p.y += sin(x * 3.2 - t * (2.0 + E * 6.0) + v * 1.5) * 0.06 * (0.3 + E * 1.6);
-    p += (hash3(r * 53.1) - 0.5) * buzz * 0.22 * sin(t * 24.0 + r * 140.0);
+    // scroll makes the strands ripple faster and harder. The ripple's phase is integrated on the CPU
+    // (uStreamPhase), so a change in E speeds the wave up instead of jumping it: with t * E here, any
+    // scroll change shifted the phase by up to 6 * t radians and the strand shook while the page moved.
+    p.y += sin(x * 3.2 - uStreamPhase + v * 1.5) * 0.06 * (0.3 + E * 1.6);
     gStreamPos = p;
     float crossing = pow(1.0 - abs(c), 3.0);
     vec3 base = mix(vec3(0.42, 0.5, 0.6), vec3(0.85, 0.85, 0.8), 0.5 + 0.5 * v * s);
@@ -532,6 +533,7 @@ export function MorphingParticleScene() {
       uHover: { value: 0 },
       uIdle: { value: reducedMotion ? 0 : 1 },
       uStreamScale: { value: 1 },
+      uStreamPhase: { value: 0 },
       uSolid: { value: 0 },
       uMT: { value: Array.from({ length: 6 }, () => new THREE.Matrix4()) },
       uToGlass: { value: 0 },
@@ -1041,6 +1043,9 @@ export function MorphingParticleScene() {
       const sR = smooth(clamp(state.sReveal));
       uniforms.uSolidS.value = sR;
 
+      // the stream's ripple speeds up with its energy; integrating speed × dt keeps the wave continuous
+      // however fast the energy changes (e.g. a programmatic glide back to the top)
+      uniforms.uStreamPhase.value = (uniforms.uStreamPhase.value + dt * (2 + clamp(state.local0) * 6) * idle) % (Math.PI * 2000);
       uniforms.uLocal.value.set(state.local0, state.local1, lift / 0.95, state.local3);
       // vault: unlock the handle, then swing the door fully open
       uniforms.uSpin.value = smooth(clamp(state.local3 / 0.18)) * Math.PI * 1.25;

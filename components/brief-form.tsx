@@ -1,12 +1,22 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Check, Copy, Mail, RotateCcw } from "lucide-react";
+import { Check, CircleCheck, Copy, RotateCcw, Send } from "lucide-react";
 import { briefForms, type BriefGroup, type BriefKind } from "@/i18n/brief-forms";
 import type { Locale } from "@/i18n/translations";
-import { CONTACT_EMAIL } from "@/lib/site-links";
+import { CONTACT_EMAIL, WEB3FORMS_ENDPOINT, WEB3FORMS_KEY } from "@/lib/site-links";
 
 type Picks = Record<string, string[]>;
+type Status = "idle" | "sending" | "sent" | "error";
+
+/** Subject lines as they land in the Gameplan inbox (always English, so the team can sort them). */
+const INBOX_SUBJECT: Record<BriefKind, (name: string) => string> = {
+  advisory: (name) => `New Advisory enquiry: ${name}`,
+  venture: (name) => `New Venture Program application: ${name}`,
+  contact: (name) => `New contact message: ${name}`,
+};
+
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 /** "a", "a and b", "a, b and c" — in the page's language. */
 function joinList(items: string[], and: string, sep: string) {
@@ -15,8 +25,8 @@ function joinList(items: string[], and: string, sep: string) {
 }
 
 /**
- * Click-to-compose form: pick options on one side and the email writes itself on the other.
- * "Send" opens the visitor's own mail app with everything filled in, addressed to CONTACT_EMAIL.
+ * Click-to-compose form: pick options on one side and the message writes itself on the other.
+ * "Send" posts everything to Web3Forms, which delivers it to CONTACT_EMAIL, then shows a thank-you.
  * The message stays editable; once edited, picks no longer overwrite it (until "rewrite").
  */
 export function BriefForm({ locale, kind, preset }: {
@@ -31,9 +41,10 @@ export function BriefForm({ locale, kind, preset }: {
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
   const [notes, setNotes] = useState("");
+  const [botcheck, setBotcheck] = useState(false);
   const [edited, setEdited] = useState<string | null>(null);
   const [tried, setTried] = useState(false);
-  const [sent, setSent] = useState(false);
+  const [status, setStatus] = useState<Status>("idle");
   const [copied, setCopied] = useState(false);
 
   const presetKey = JSON.stringify(preset ?? {});
@@ -70,11 +81,17 @@ export function BriefForm({ locale, kind, preset }: {
   const message = edited ?? generated;
   const subject = `${copy.subject}${company.trim() ? ` · ${company.trim()}` : name.trim() ? ` · ${name.trim()}` : ""}`;
   const missingName = !name.trim();
+  const missingEmail = !email.trim();
+  const badEmail = !missingEmail && !EMAIL_RE.test(email.trim());
   const missingPick = !pickedIds.length && !notes.trim() && edited === null;
-  const ready = !missingName && !missingPick;
+  const ready = !missingName && !missingEmail && !badEmail && !missingPick;
+  const sending = status === "sending";
+
+  /** any change after a failed send clears the error (the answers themselves are never cleared) */
+  const touched = () => { if (status === "error") setStatus("idle"); };
 
   const toggle = (g: BriefGroup, id: string) => {
-    setSent(false);
+    touched();
     setPicks((prev) => {
       const cur = prev[g.id] ?? [];
       const next = g.multi ? (cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id]) : cur[0] === id ? [] : [id];
@@ -82,12 +99,55 @@ export function BriefForm({ locale, kind, preset }: {
     });
   };
 
-  const send = () => {
+  /** every answer as its own field, labelled in English for the inbox */
+  const fields = () => {
+    const en = briefForms.en[kind];
+    const out: Record<string, string> = {};
+    for (const g of en.groups) {
+      const ids = picks[g.id];
+      if (ids?.length) out[g.label] = ids.map((id) => g.choices.find((c) => c.id === id)?.label ?? id).join(", ");
+    }
+    return out;
+  };
+
+  const send = async () => {
     setTried(true);
-    if (!ready) return;
-    const href = `mailto:${CONTACT_EMAIL}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(message)}`;
-    window.location.href = href;
-    setSent(true);
+    if (!ready || sending) return;
+    setStatus("sending");
+    try {
+      if (!WEB3FORMS_KEY) throw new Error("NEXT_PUBLIC_WEB3FORMS_KEY is not set");
+      const res = await fetch(WEB3FORMS_ENDPOINT, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Accept: "application/json" },
+        body: JSON.stringify({
+          access_key: WEB3FORMS_KEY,
+          subject: INBOX_SUBJECT[kind](name.trim()),
+          from_name: "Gameplan website",
+          replyto: email.trim(),
+          botcheck,
+          Name: name.trim(),
+          Company: company.trim() || "—",
+          Email: email.trim(),
+          ...(wantsPhone && phone.trim() ? { Phone: phone.trim() } : {}),
+          ...fields(),
+          ...(notes.trim() ? { Notes: notes.trim() } : {}),
+          Message: message,
+          Language: locale === "ar" ? "Arabic" : "English",
+          Page: typeof window !== "undefined" ? window.location.href : "",
+        }),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok || !data?.success) throw new Error(data?.message || `HTTP ${res.status}`);
+      setStatus("sent");
+    } catch (err) {
+      console.error("Form send failed:", err);
+      setStatus("error");
+    }
+  };
+
+  const reset = () => {
+    setPicks({}); setName(""); setCompany(""); setEmail(""); setPhone(""); setNotes("");
+    setEdited(null); setTried(false); setStatus("idle");
   };
 
   const copyMessage = async () => {
@@ -98,8 +158,23 @@ export function BriefForm({ locale, kind, preset }: {
     } catch { /* clipboard blocked: the text is still selectable in the box */ }
   };
 
+  if (status === "sent") {
+    return (
+      <div className="gp-brief gp-brief-done" role="status" aria-live="polite">
+        <div className="gp-brief-letter">
+          <div className="gp-brief-letter-card gp-brief-thanks">
+            <CircleCheck size={34} aria-hidden="true" />
+            <h3>{ui.sentTitle}</h3>
+            <p>{ui.sentBody} <strong dir="ltr">{email.trim()}</strong>.</p>
+            <button type="button" className="gp-mono" onClick={reset}>{ui.sendAnother}</button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <form className="gp-brief" onSubmit={(e) => { e.preventDefault(); send(); }} noValidate>
+    <form className="gp-brief" onSubmit={(e) => { e.preventDefault(); void send(); }} noValidate aria-busy={sending}>
       {/* the message, written live from the picks */}
       <div className="gp-brief-letter">
         <div className="gp-brief-letter-card">
@@ -112,7 +187,7 @@ export function BriefForm({ locale, kind, preset }: {
             className="gp-brief-body"
             value={message}
             placeholder={ui.placeholder}
-            onChange={(e) => { setEdited(e.target.value); setSent(false); }}
+            onChange={(e) => { setEdited(e.target.value); touched(); }}
             aria-label={ui.yourMessage}
             rows={12}
           />
@@ -123,8 +198,8 @@ export function BriefForm({ locale, kind, preset }: {
             </p>
           )}
           <div className="gp-brief-actions">
-            <button type="submit" className="gp-primary gp-brief-send" aria-disabled={!ready}>
-              {ui.send}<Mail size={18} />
+            <button type="submit" className="gp-primary gp-brief-send" aria-disabled={!ready || sending} aria-busy={sending} disabled={sending}>
+              {sending ? ui.sending : ui.send}<Send size={18} />
             </button>
             <button type="button" className="gp-brief-copy gp-mono" onClick={copyMessage} disabled={!message}>
               {copied ? <Check size={14} /> : <Copy size={14} />}{copied ? ui.copied : ui.copy}
@@ -132,8 +207,10 @@ export function BriefForm({ locale, kind, preset }: {
           </div>
           <div className="gp-brief-status" aria-live="polite">
             {tried && missingName && <p className="is-warn">{ui.needName}</p>}
-            {tried && !missingName && missingPick && <p className="is-warn">{ui.needPick}</p>}
-            {sent && <p><strong>{ui.sentTitle}</strong> {ui.sentBody} <a href={`mailto:${CONTACT_EMAIL}`} dir="ltr">{CONTACT_EMAIL}</a>.</p>}
+            {tried && !missingName && missingEmail && <p className="is-warn">{ui.needEmail}</p>}
+            {tried && !missingName && badEmail && <p className="is-warn">{ui.badEmail}</p>}
+            {tried && !missingName && !missingEmail && !badEmail && missingPick && <p className="is-warn">{ui.needPick}</p>}
+            {status === "error" && <p className="is-error">{ui.errorBody} <a href={`mailto:${CONTACT_EMAIL}`} dir="ltr">{CONTACT_EMAIL}</a>.</p>}
           </div>
         </div>
       </div>
@@ -144,22 +221,25 @@ export function BriefForm({ locale, kind, preset }: {
         <div className="gp-brief-fields">
           <label className={tried && missingName ? "is-invalid" : ""}>
             <span>{ui.name}</span>
-            <input value={name} onChange={(e) => { setName(e.target.value); setSent(false); }} placeholder={ui.namePh} autoComplete="name" required />
+            <input value={name} onChange={(e) => { setName(e.target.value); touched(); }} placeholder={ui.namePh} autoComplete="name" required />
           </label>
           <label>
             <span>{ui.company} <em>{ui.optional}</em></span>
-            <input value={company} onChange={(e) => setCompany(e.target.value)} placeholder={ui.companyPh} autoComplete="organization" />
+            <input value={company} onChange={(e) => { setCompany(e.target.value); touched(); }} placeholder={ui.companyPh} autoComplete="organization" />
           </label>
-          <label>
-            <span>{ui.email} <em>{ui.optional}</em></span>
-            <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder={ui.emailPh} autoComplete="email" dir="ltr" />
+          <label className={tried && (missingEmail || badEmail) ? "is-invalid" : ""}>
+            <span>{ui.email}</span>
+            <input type="email" value={email} onChange={(e) => { setEmail(e.target.value); touched(); }} placeholder={ui.emailPh} autoComplete="email" dir="ltr" required aria-invalid={tried && (missingEmail || badEmail)} />
           </label>
           {wantsPhone && (
             <label className="gp-brief-appear">
               <span>{ui.phone}</span>
-              <input type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder={ui.phonePh} autoComplete="tel" dir="ltr" />
+              <input type="tel" value={phone} onChange={(e) => { setPhone(e.target.value); touched(); }} placeholder={ui.phonePh} autoComplete="tel" dir="ltr" />
             </label>
           )}
+          {/* honeypot: hidden from people, bots tick it and Web3Forms drops the submission */}
+          <input type="checkbox" name="botcheck" className="gp-brief-honeypot" tabIndex={-1} autoComplete="off" aria-hidden="true"
+            checked={botcheck} onChange={(e) => setBotcheck(e.target.checked)} />
         </div>
 
         <span className="gp-brief-step gp-mono">02 · {ui.stepPick}</span>
@@ -181,7 +261,7 @@ export function BriefForm({ locale, kind, preset }: {
 
         <label className="gp-brief-notes">
           <span>{ui.notes} <em>{ui.optional}</em></span>
-          <textarea value={notes} onChange={(e) => { setNotes(e.target.value); setSent(false); }} placeholder={ui.notesPh} rows={3} />
+          <textarea value={notes} onChange={(e) => { setNotes(e.target.value); touched(); }} placeholder={ui.notesPh} rows={3} />
         </label>
       </div>
     </form>

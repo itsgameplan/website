@@ -723,3 +723,82 @@ html.lenis, .lenis.lenis-smooth { scroll-behavior: auto !important; }
   .gp-brief-send { width: 100%; }
   .gp-contact-hero { padding: 120px 0 50px; }
 }
+
+/* ===== Header language pill: label centred both ways, both scripts on one optical baseline ===== */
+.gp-lang { display: inline-flex !important; align-items: center; justify-content: center; line-height: 1; }
+.gp-lang-label { display: inline-flex; align-items: center; gap: .42em; line-height: 1; }
+.gp-lang-label > span { display: block; line-height: 1; }
+.gp-lang-en { font-family: "IBM Plex Mono", monospace; letter-spacing: .02em; }
+.gp-lang-sep { opacity: .55; }
+/* the Arabic glyph sits low in its em box: lift it so it reads on the same line as "EN" */
+.gp-lang-ar { font-family: "IBM Plex Sans Arabic", sans-serif; font-weight: 500; font-size: 1.15em; transform: translateY(-.16em); }
+
+/* ===== We advise. We build. — two doors straight after the hero ===== */
+.gp-split { min-height: 100svh; }
+.gp-split-title { font-size: clamp(56px, 6.4vw, 118px); margin: 0 0 8px; text-shadow: 0 2px 50px rgba(4,8,14,.5); }
+.gp-split-title em { font-style: normal; color: var(--gp-amber); }
+.gp-split .gp-door { aspect-ratio: auto; min-height: clamp(470px, 56svh, 560px); }
+.gp-split .gp-doors { margin-top: clamp(28px, 4.5svh, 56px); }
+.gp-split.gp-section { padding-top: clamp(96px, 13svh, 130px); padding-bottom: clamp(70px, 10svh, 120px); }
+.gp-split .gp-door-leaf { justify-content: flex-end; }
+.gp-split .gp-door-title { margin-bottom: 10px; }
+.gp-split-lead { display: block; font-size: 16px; line-height: 1.45; font-weight: 600; max-width: 88%; }
+.gp-split-count { display: inline-block; min-width: .65em; font-size: 1.5em; line-height: 1; font-variant-numeric: tabular-nums; text-align: center; }
+.gp-split-list { list-style: none; margin: 14px 0 0; padding: 0; display: grid; gap: 8px 18px; max-width: 92%; font-size: 14px; line-height: 1.3; }
+.gp-split-list-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.gp-split-list li { position: relative; padding-inline-start: 14px; opacity: .88; }
+.gp-split-list li::before { content: ""; position: absolute; inset-inline-start: 0; top: .5em; width: 6px; height: 6px; border-radius: 50%; background: currentColor; opacity: .6; }
+.gp-door-glass .gp-split-count { color: var(--gp-amber); }
+@media (max-width: 700px) {
+  .gp-split { padding-top: 110px; }
+  .gp-split .gp-door { min-height: 560px; }
+  .gp-split-list-2 { grid-template-columns: 1fr 1fr; gap: 6px 12px; font-size: 13px; }
+}
+
+/* ===== Our verticals + sponsorship support (after the heritage chapter) ===== */
+.gp-verticals { position: relative; z-index: 2; padding: clamp(110px, 16svh, 170px) 6.5% clamp(110px, 16svh, 170px); color: var(--gp-cream); }
+.gp-verticals-inner { max-width: 1380px; margin: 0 auto; }
+.gp-verticals .gp-heading { font-size: clamp(56px, 6.4vw, 112px); max-width: none; margin: 0; }
+.gp-verticals .gp-heading em { color: var(--gp-amber); }
+.gp-verticals-label { display: block; font-size: 11px; letter-spacing: .14em; color: var(--gp-amber); margin-bottom: 18px; }
+.gp-verticals-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 40px; flex-wrap: wrap; }
+.gp-verticals-intro { margin: 0; max-width: 470px; font-size: clamp(19px, 1.8vw, 26px); line-height: 1.45; font-weight: 500; letter-spacing: -.02em; color: rgba(245,242,233,.84); }
+.gp-verticals-photo { margin: clamp(40px, 6svh, 64px) 0 0; border-radius: 10px; overflow: hidden; aspect-ratio: 16 / 8; background: #0b111a;
+  box-shadow: 0 30px 80px rgba(0,0,0,.45); border: 1px solid rgba(245,242,233,.12); }
+.gp-verticals-photo img, .gp-sponsor-photo img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.gp-verticals-photo img { object-position: 50% 40%; }
+.gp-pillars { list-style: none; margin: clamp(44px, 6svh, 70px) 0 0; padding: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: clamp(24px, 3vw, 48px); }
+.gp-pillars li { border-top: 1px solid rgba(245,242,233,.28); padding-top: 22px; }
+.gp-pillar-num { font-size: 11px; letter-spacing: .14em; color: var(--gp-amber); }
+.gp-pillar-title { margin: 12px 0 12px; font-size: clamp(19px, 1.6vw, 24px); font-weight: 800; letter-spacing: .01em; line-height: 1.15; }
+.gp-pillar-desc { margin: 0; font-size: 16px; line-height: 1.6; color: rgba(245,242,233,.78); }
+
+.gp-sponsor { display: grid; grid-template-columns: 1.15fr .85fr; align-items: center; gap: clamp(32px, 5vw, 80px); margin-top: clamp(110px, 16svh, 170px); }
+.gp-sponsor-photo { position: relative; margin: 0; border-radius: 10px; overflow: hidden; aspect-ratio: 3 / 2; background: #0b111a;
+  box-shadow: 0 30px 80px rgba(0,0,0,.45); border: 1px solid rgba(245,242,233,.12); }
+.gp-sponsor-photo figcaption { position: absolute; inset-inline-start: 18px; bottom: 16px; font-size: 10px; letter-spacing: .14em; color: var(--gp-cream);
+  background: rgba(7,10,16,.6); backdrop-filter: blur(6px); padding: 7px 11px; border-radius: 4px; }
+.gp-sponsor-copy .gp-verticals-intro { margin-top: 24px; }
+.gp-ar .gp-verticals .gp-heading { font-size: clamp(50px, 5.4vw, 96px); }
+@media (max-width: 900px) {
+  .gp-pillars { grid-template-columns: 1fr; }
+  .gp-sponsor { grid-template-columns: 1fr; }
+}
+@media (max-width: 700px) {
+  .gp-verticals { padding: 100px 7%; }
+  .gp-verticals .gp-heading { font-size: clamp(46px, 12vw, 76px); }
+  .gp-verticals-photo { aspect-ratio: 4 / 3; }
+  .gp-ar .gp-verticals .gp-heading { font-size: clamp(42px, 10vw, 66px); }
+}
+
+/* ===== Forms: sending state, thank-you and error ===== */
+.gp-brief-send[aria-busy="true"] { opacity: .75; cursor: progress; }
+.gp-brief-status .is-error { color: #ff9a85; }
+.gp-brief-thanks { display: flex; flex-direction: column; align-items: flex-start; gap: 14px; padding: 6px 0; }
+.gp-brief-thanks h3 { margin: 0; font-size: clamp(26px, 2.4vw, 36px); font-weight: 800; letter-spacing: -.02em; }
+.gp-brief-thanks p { margin: 0; color: rgba(245,242,233,.8); line-height: 1.6; }
+.gp-brief-thanks svg { color: var(--accent, var(--gp-amber)); }
+.gp-brief-thanks button { border: 0; background: none; color: inherit; padding: 0; font-size: 11px; letter-spacing: .12em; text-decoration: underline; text-underline-offset: 4px; }
+.gp-brief.gp-brief-done { grid-template-columns: minmax(0, 720px); }
+.gp-brief-done .gp-brief-letter { position: static; }
+.gp-brief-honeypot { position: absolute !important; width: 1px; height: 1px; opacity: 0; pointer-events: none; inset-inline-start: -9999px; }
