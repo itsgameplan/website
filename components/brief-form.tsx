@@ -26,7 +26,8 @@ function joinList(items: string[], and: string, sep: string) {
 
 /**
  * Click-to-compose form: pick options on one side and the message writes itself on the other.
- * "Send" posts everything to Web3Forms, which delivers it to CONTACT_EMAIL, then shows a thank-you.
+ * "Send" stores the submission in the database (POST /api/messages, read in /admin) and emails it
+ * to CONTACT_EMAIL through Web3Forms, then shows a thank-you.
  * The message stays editable; once edited, picks no longer overwrite it (until "rewrite").
  */
 export function BriefForm({ locale, kind, preset }: {
@@ -110,39 +111,56 @@ export function BriefForm({ locale, kind, preset }: {
     return out;
   };
 
+  /** stores the submission in the site's database (read in the admin panel) */
+  const saveToDatabase = async (answers: Record<string, string>, page: string) => {
+    const res = await fetch("/api/messages", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        kind, name: name.trim(), email: email.trim(), company: company.trim(),
+        phone: wantsPhone ? phone.trim() : "", answers, notes: notes.trim(), message, locale, page, botcheck,
+      }),
+    });
+    if (!res.ok) throw new Error(`database: HTTP ${res.status}`);
+  };
+
+  /** emails the submission to CONTACT_EMAIL through Web3Forms */
+  const sendEmail = async (answers: Record<string, string>, page: string) => {
+    if (!WEB3FORMS_KEY) throw new Error("email: NEXT_PUBLIC_WEB3FORMS_KEY is not set");
+    const res = await fetch(WEB3FORMS_ENDPOINT, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      body: JSON.stringify({
+        access_key: WEB3FORMS_KEY,
+        subject: INBOX_SUBJECT[kind](name.trim()),
+        from_name: "Gameplan website",
+        replyto: email.trim(),
+        botcheck,
+        Name: name.trim(),
+        Company: company.trim() || "—",
+        Email: email.trim(),
+        ...(wantsPhone && phone.trim() ? { Phone: phone.trim() } : {}),
+        ...answers,
+        ...(notes.trim() ? { Notes: notes.trim() } : {}),
+        Message: message,
+        Language: locale === "ar" ? "Arabic" : "English",
+        Page: page,
+      }),
+    });
+    const data = await res.json().catch(() => null);
+    if (!res.ok || !data?.success) throw new Error(`email: ${data?.message || `HTTP ${res.status}`}`);
+  };
+
+  /** saved and emailed in parallel; the visitor sees success if either one got through */
   const send = async () => {
     setTried(true);
     if (!ready || sending) return;
     setStatus("sending");
-    try {
-      if (!WEB3FORMS_KEY) throw new Error("NEXT_PUBLIC_WEB3FORMS_KEY is not set");
-      const res = await fetch(WEB3FORMS_ENDPOINT, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Accept: "application/json" },
-        body: JSON.stringify({
-          access_key: WEB3FORMS_KEY,
-          subject: INBOX_SUBJECT[kind](name.trim()),
-          from_name: "Gameplan website",
-          replyto: email.trim(),
-          botcheck,
-          Name: name.trim(),
-          Company: company.trim() || "—",
-          Email: email.trim(),
-          ...(wantsPhone && phone.trim() ? { Phone: phone.trim() } : {}),
-          ...fields(),
-          ...(notes.trim() ? { Notes: notes.trim() } : {}),
-          Message: message,
-          Language: locale === "ar" ? "Arabic" : "English",
-          Page: typeof window !== "undefined" ? window.location.href : "",
-        }),
-      });
-      const data = await res.json().catch(() => null);
-      if (!res.ok || !data?.success) throw new Error(data?.message || `HTTP ${res.status}`);
-      setStatus("sent");
-    } catch (err) {
-      console.error("Form send failed:", err);
-      setStatus("error");
-    }
+    const answers = fields();
+    const page = window.location.href;
+    const results = await Promise.allSettled([saveToDatabase(answers, page), sendEmail(answers, page)]);
+    results.forEach((r) => { if (r.status === "rejected") console.error("Form send:", r.reason); });
+    setStatus(results.some((r) => r.status === "fulfilled") ? "sent" : "error");
   };
 
   const reset = () => {
