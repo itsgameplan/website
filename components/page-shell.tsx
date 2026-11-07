@@ -6,10 +6,10 @@ import { CrosshairCursor } from "@/components/ui/crosshair-cursor";
 import { SiteFooter } from "@/components/sections/site-footer";
 import { programs } from "@/i18n/programs";
 import type { Chapter, Dictionary, Locale } from "@/i18n/translations";
-import { pagePath, type SitePage } from "@/lib/site-links";
+import { pagePath, type NavPage, type SitePage } from "@/lib/site-links";
 import { LangLabel } from "@/components/ui/lang-label";
 
-export const NAV_PAGES: SitePage[] = ["venture", "advisory", "contact"];
+export const NAV_PAGES: NavPage[] = ["venture", "advisory", "contact"];
 
 /** Shared frame for the standalone pages: backdrop, header (logo, page links, language), footer. */
 export function PageShell({ locale, t, page, children }: { locale: Locale; t: Dictionary; page: SitePage; children: ReactNode }) {

@@ -1,4 +1,5 @@
-import { ArrowUpRight, ArrowUp } from "lucide-react";
+import Link from "next/link";
+import { ArrowUpRight, ArrowUp, LogIn } from "lucide-react";
 import { chapters, type Chapter, type Dictionary, type Locale } from "@/i18n/translations";
 import { CONTACT_EMAIL, pagePath } from "@/lib/site-links";
 
@@ -51,6 +52,7 @@ export function SiteFooter({ t, locale, onNavigate, onReplay, langHref }: {
           <a href={langHref ?? (locale === "en" ? "/ar" : "/en")} hrefLang={locale === "en" ? "ar" : "en"}>{locale === "en" ? "العربية" : "English"}</a>
           <button onClick={() => onNavigate("home")}>{t.footerTop}<ArrowUp size={13}/></button>
           <button onClick={onReplay}>{t.replay} ↺</button>
+          <Link className="gp-footer-login" href="/admin/login" rel="nofollow" prefetch={false}>{t.footerLogin}<LogIn size={12} aria-hidden="true" /></Link>
         </div>
       </div>
 

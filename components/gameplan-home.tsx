@@ -7,7 +7,6 @@ import dynamic from "next/dynamic";
 import { CrosshairCursor } from "@/components/ui/crosshair-cursor";
 import { HeroSection } from "@/components/sections/hero-section";
 import { SplitSection } from "@/components/sections/split-section";
-import { VerticalsSection } from "@/components/sections/verticals-section";
 import { AboutSection } from "@/components/sections/about-section";
 import { VenturesSection } from "@/components/sections/ventures-section";
 import { AdvisorySection } from "@/components/sections/advisory-section";
@@ -16,10 +15,10 @@ import { ProcessSection } from "@/components/sections/process-section";
 import { SiteFooter } from "@/components/sections/site-footer";
 import { chapters, type Chapter, type Dictionary, type Locale } from "@/i18n/translations";
 import { programs } from "@/i18n/programs";
-import { pagePath, type SitePage } from "@/lib/site-links";
+import { pagePath, type NavPage } from "@/lib/site-links";
 import { LangLabel } from "@/components/ui/lang-label";
 
-const NAV_PAGES: SitePage[] = ["venture", "advisory", "contact"];
+const NAV_PAGES: NavPage[] = ["venture", "advisory", "contact"];
 
 const MorphingParticleScene = dynamic(() => import("@/components/ui/morphing-particle-scene").then((mod) => mod.MorphingParticleScene), { ssr: false });
 
@@ -118,8 +117,7 @@ export function GameplanHome({ locale, t }: { locale: Locale; t: Dictionary }) {
         <AdvisorySection t={t} />
       </div>
       <MomentumSection t={t} />
-      <AboutSection t={t} onNavigate={navClick} />
-      <VerticalsSection t={t} />
+      <AboutSection t={t} locale={locale} />
       <ProcessSection t={t} locale={locale} />
     </main>
     <SiteFooter t={t} locale={locale} onNavigate={navClick} onReplay={() => { jump("home"); setReplayKey((k) => k + 1); }} />

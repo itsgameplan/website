@@ -3,17 +3,17 @@ import type { Dictionary } from "@/i18n/translations";
 import { Reveal } from "@/components/ui/reveal";
 
 /**
- * Follows the heritage chapter: the three pillars Gameplan works on (with the team
- * photo), then the athlete sponsorship block (Omar Assar).
+ * The /verticals page body: the three pillars Gameplan works on (with the team photo),
+ * then the athlete sponsorship block (Omar Assar).
  */
 export function VerticalsSection({ t }: { t: Dictionary }) {
   return (
-    <section id="verticals" className="gp-verticals">
+    <section id="verticals" className="gp-verticals gp-verticals-page">
       <div className="gp-verticals-inner">
         <div className="gp-verticals-head">
           <div>
             <Reveal><span className="gp-mono gp-verticals-label">{t.verticalsLabel}</span></Reveal>
-            <Reveal delay={80}><h2 className="gp-display gp-heading">{t.verticalsTitle} <em>{t.verticalsAccent}</em></h2></Reveal>
+            <Reveal delay={80}><h1 className="gp-display gp-heading">{t.verticalsTitle} <em>{t.verticalsAccent}</em></h1></Reveal>
           </div>
           <Reveal delay={140}><p className="gp-verticals-intro">{t.verticalsIntro}</p></Reveal>
         </div>

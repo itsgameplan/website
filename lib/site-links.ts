@@ -10,8 +10,10 @@ export const CONTACT_EMAIL = "marketing@itsgameplan.com";
 export const WEB3FORMS_ENDPOINT = "https://api.web3forms.com/submit";
 export const WEB3FORMS_KEY = process.env.NEXT_PUBLIC_WEB3FORMS_KEY ?? "";
 
-export type SitePage = "venture" | "advisory" | "contact";
-const PAGE_SLUGS: Record<SitePage, string> = { venture: "venture-program", advisory: "advisory", contact: "contact" };
+export type SitePage = "venture" | "advisory" | "contact" | "verticals";
+/** the pages listed in the header navigation */
+export type NavPage = Exclude<SitePage, "verticals">;
+const PAGE_SLUGS: Record<SitePage, string> = { venture: "venture-program", advisory: "advisory", contact: "contact", verticals: "verticals" };
 
 /** The standalone pages, e.g. /en/venture-program, /ar/contact. */
 export const pagePath = (locale: Locale, page: SitePage) => `/${locale}/${PAGE_SLUGS[page]}`;

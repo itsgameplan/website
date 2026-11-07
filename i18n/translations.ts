@@ -21,6 +21,7 @@ export const dictionaries = {
     applyTag: "06 / CONTACT", applyTitle: "GOT A", applyAccent: "GAMEPLAN?", applyDesc: "Have an idea, a challenge or an ambitious project? Let's make the next move together.", applyCta: "START A CONVERSATION", footer: "INNOVATION IS IN OUR DNA.",
     home: "HOME", about: "HERITAGE", ventures: "CAIRO TECH", advisory: "ASL", momentum: "MOMENTUM", process: "YOUR TURN", apply: "CONTACT", replay: "REPLAY INTRO",
     aslAppStoreSmall: "Download on the", aslAppStore: "App Store", aslPlaySmall: "Get it on", aslPlay: "Google Play", aslWebsite: "VISIT WEBSITE", momentumBuilt: "WE HELP DEVELOP", mProduct: "Product development", mPackaging: "Packaging", mTech: "Tech", mManufacturing: "Manufacturing", mBrand: "Brand", doorLabel: "DOOR", doorOneTitle: "JOIN THE VENTURE PROGRAM", doorOneDesc: "For founders. Cash, services or both, for equity.", doorTwoTitle: "WORK WITH GAMEPLAN ADVISORY", doorTwoDesc: "For organisations ready to scale. We run it end to end.", doorEnter: "OPEN THE DOOR",
+    heritageCta: "OUR VERTICALS", verticalsMeta: "Federations and institutions, sports campaigns, specialist projects and athlete sponsorship.", footerLogin: "LOGIN",
     verticalsLabel: "OUR VERTICALS", verticalsTitle: "OUR", verticalsAccent: "VERTICALS.", verticalsIntro: "We work on three key pillars.", verticalsPhotoAlt: "The Gameplan team with medal-winning athletes and trophies at a West Asia table tennis championship",
     pillars: [
       { title: "FEDERATIONS & INSTITUTIONS", desc: "We manage federations and sport institutions end to end, and have done so all over the MENA region." },
@@ -51,6 +52,7 @@ export const dictionaries = {
     applyTag: "٠٦ / تواصل", applyTitle: "عندك", applyAccent: "خطة؟", applyDesc: "لديك فكرة أو تحدٍ أو مشروع طموح؟ لنبدأ الخطوة التالية معاً.", applyCta: "ابدأ المحادثة", footer: "الابتكار في جيناتنا.",
     home: "الرئيسية", about: "الإرث", ventures: "كايرو تك", advisory: "أصل", momentum: "مومنتم", process: "دورك", apply: "تواصل", replay: "إعادة المقدمة",
     aslAppStoreSmall: "حمّله من", aslAppStore: "App Store", aslPlaySmall: "احصل عليه من", aslPlay: "Google Play", aslWebsite: "زيارة الموقع", momentumBuilt: "نساعد في تطوير", mProduct: "تطوير المنتج", mPackaging: "التغليف", mTech: "التقنية", mManufacturing: "التصنيع", mBrand: "العلامة التجارية", doorLabel: "الباب", doorOneTitle: "انضم إلى برنامج المشاريع", doorOneDesc: "للمؤسسين. تمويل أو خدمات أو كلاهما، مقابل حصة.", doorTwoTitle: "اعمل مع استشارات جيم بلان", doorTwoDesc: "للمؤسسات المستعدة للتوسع. ندير كل شيء من البداية إلى النهاية.", doorEnter: "افتح الباب",
+    heritageCta: "قطاعات عملنا", verticalsMeta: "الاتحادات والمؤسسات، والحملات الرياضية، والمشاريع المتخصصة، ورعاية الرياضيين.", footerLogin: "دخول",
     verticalsLabel: "قطاعاتنا", verticalsTitle: "قطاعات", verticalsAccent: "عملنا.", verticalsIntro: "نعمل على ثلاث ركائز أساسية.", verticalsPhotoAlt: "فريق جيم بلان مع رياضيين فائزين بالميداليات والكؤوس في بطولة غرب آسيا لكرة الطاولة",
     pillars: [
       { title: "الاتحادات والمؤسسات", desc: "ندير الاتحادات والمؤسسات الرياضية من البداية إلى النهاية، وقد فعلنا ذلك في مختلف أنحاء منطقة الشرق الأوسط وشمال أفريقيا." },

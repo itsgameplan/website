@@ -802,3 +802,12 @@ html.lenis, .lenis.lenis-smooth { scroll-behavior: auto !important; }
 .gp-brief.gp-brief-done { grid-template-columns: minmax(0, 720px); }
 .gp-brief-done .gp-brief-letter { position: static; }
 .gp-brief-honeypot { position: absolute !important; width: 1px; height: 1px; opacity: 0; pointer-events: none; inset-inline-start: -9999px; }
+
+/* /verticals page: the section clears the fixed header */
+.gp-verticals.gp-verticals-page { padding-top: clamp(140px, 20svh, 200px); }
+@media (max-width: 700px) { .gp-verticals.gp-verticals-page { padding-top: 120px; } }
+/* heritage → /verticals button */
+.gp-heritage-cta { margin-top: 4px; }
+/* footer: small admin login link */
+.gp-footer-login { display: inline-flex; align-items: center; gap: 6px; opacity: .55; transition: opacity .2s; }
+.gp-footer-login:hover, .gp-footer-login:focus-visible { opacity: 1; }
