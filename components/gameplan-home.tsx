@@ -6,7 +6,8 @@ import { SmoothScroll } from "@/components/ui/smooth-scroll";
 import dynamic from "next/dynamic";
 import { CrosshairCursor } from "@/components/ui/crosshair-cursor";
 import { HeroSection } from "@/components/sections/hero-section";
-import { SplitSection } from "@/components/sections/split-section";
+import { BuiltSection } from "@/components/sections/built-section";
+import { AdviseSection } from "@/components/sections/advise-section";
 import { AboutSection } from "@/components/sections/about-section";
 import { VenturesSection } from "@/components/sections/ventures-section";
 import { AdvisorySection } from "@/components/sections/advisory-section";
@@ -112,7 +113,8 @@ export function GameplanHome({ locale, t }: { locale: Locale; t: Dictionary }) {
     <main>
       <div id="gp-morph-track" className="gp-morph-track">
         <HeroSection t={t} onNavigate={navClick} replayKey={replayKey} />
-        <SplitSection t={t} locale={locale} onNavigate={navClick} />
+        <BuiltSection t={t} onNavigate={navClick} />
+        <AdviseSection t={t} locale={locale} />
         <VenturesSection t={t} />
         <AdvisorySection t={t} />
       </div>

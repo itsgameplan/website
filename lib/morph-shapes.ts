@@ -566,3 +566,7 @@ export function createMorphTargets(count: number): MorphSet {
   };
   return result;
 }
+
+/* ---------- shared with other point-cloud builders (lib/advise-icons.ts) ---------- */
+export { rng, add, sub, mul, norm, hex, mix3, rotZ, rotX, unitDir, sphere, box, cylinder, tube, torus, build, orderedIndices, CREAM, GOLD, GOLD_DEEP, TAU };
+export type { V3, Sample, Part, Built };

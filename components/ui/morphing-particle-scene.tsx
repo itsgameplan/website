@@ -7,6 +7,8 @@ import { drawSurveyMap } from "@/lib/survey-map";
 import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
 import { createMomentumStage, sampleMomentumPoints } from "@/components/ui/momentum-stage";
 import { createSolidForms } from "@/components/ui/solid-forms";
+import { createAdviseIcon } from "@/lib/advise-icons";
+import { ADVISE_ICON_COUNT, adviseIconFrame, adviseTimeline } from "@/lib/advise-timeline";
 
 const FORMS: FormName[] = ["origin", "sports", "loader", "vault"];
 /**
@@ -38,6 +40,10 @@ const BUCKET_MOUTH: [number, number] = [1.98, -0.2];
 /** English (copy on the left): the loader sits right of centre, between the copy and the survey drawing. */
 const LOADER_X_LTR = 0.16;
 const SPORTS_POSE = { rx: 0.1, ry: -0.28, x: 0.44, scale: 0.92 }; // balls, on the right
+/** "We advise" icons sit this far from centre (fraction of the half-width), opposite the pinned copy */
+const ICON_X = 0.5;
+/** texels per row of the icon textures (rows = particles / ICON_TEX_W, per icon) */
+const ICON_TEX_W = 512;
 
 /** Void palette per section (same order as SECTION_IDS): gradient top, gradient bottom, light-beam colour. */
 const PALETTES: [number, number, number][] = [
@@ -274,6 +280,7 @@ const vertexShader = /* glsl */ `
   attribute vec3 aGlass;     // target point on a Momentum object, in that object's space
   attribute float aGlassPart; // which object: 0 glass, 1 logo, 2-5 sachets
   attribute vec3 aGlassCol;  // colour of that spot on the object
+  attribute float aIndex;    // particle index (looks up its point in each "we advise" icon)
 
   uniform float uStage;
   uniform float uTime;
@@ -301,6 +308,13 @@ const vertexShader = /* glsl */ `
   uniform float uSolidS;      // 1 while the solid balls have replaced the particles
   uniform float uQuiet;       // 1 in the vault section: hide the dust shell so only the vault renders
   uniform float uGlassPoint;  // point-size factor so particles read at the stage's scale
+  uniform sampler2D uIconPos; // "we advise" icons: one RGBA texel per particle, uIconRows rows per icon
+  uniform sampler2D uIconCol;
+  uniform float uIconRows;
+  uniform float uIconMix;     // 0 strand → 1 icon
+  uniform float uIconA;       // icon being shown …
+  uniform float uIconB;       // … the next one …
+  uniform float uIconF;       // … and how far the morph between them has got
 
   varying vec3 vColor;
   varying float vAlpha;
@@ -311,6 +325,7 @@ const vertexShader = /* glsl */ `
 
   vec3 gStreamPos;
   vec3 gStreamCol;
+  float gIconW = 0.0; // how much this particle is part of an icon right now
 
   // 01 — fiber stream: a twisting ribbon of strands, energised by scroll.
   void stream(float r) {
@@ -381,10 +396,36 @@ const vertexShader = /* glsl */ `
     return aCol3;
   }
 
+  vec4 iconTexel(sampler2D t, float k) {
+    int idx = int(aIndex + 0.5);
+    return texelFetch(t, ivec2(idx % 512, idx / 512 + int(k + 0.5) * int(uIconRows + 0.5)), 0);
+  }
+  float quintic(float e) { return e * e * e * (e * (e * 6.0 - 15.0) + 10.0); }
+
+  // 01b — "we advise": the strand re-forms into one icon per service, then flows icon to icon
+  void iconBlend(float r) {
+    if (uIconMix < 0.001) return;
+    vec3 dir = normalize(hash3(r * 57.3) - 0.5 + 1e-4);
+    vec3 a = iconTexel(uIconPos, uIconA).xyz;
+    vec3 b = iconTexel(uIconPos, uIconB).xyz;
+    // icon → icon: a staggered sweep, so the shape rebuilds from one side with a little lift
+    float sw = clamp(0.5 + a.x * 0.16 + (r - 0.5) * 0.45, 0.0, 1.0);
+    float g = quintic(clamp(uIconF * 1.8 - sw * 0.8, 0.0, 1.0));
+    vec3 ip = mix(a, b, g) + dir * sin(3.14159265 * g) * 0.42;
+    ip += vec3(sin(uTime * 1.1 + r * 37.0), cos(uTime * 0.9 + r * 23.0), sin(uTime * 0.7 + r * 11.0)) * 0.012 * uIdle;
+    vec3 ic = mix(iconTexel(uIconCol, uIconA).rgb, iconTexel(uIconCol, uIconB).rgb, g);
+    // strand → icon: particles leave the strand left to right
+    float sm = clamp(0.5 + position.x * 0.05 + (r - 0.5) * 0.5, 0.0, 1.0);
+    float m = quintic(clamp(uIconMix * 1.8 - sm * 0.8, 0.0, 1.0));
+    gStreamPos = mix(gStreamPos, ip, m) + dir * sin(3.14159265 * m) * 0.6;
+    gStreamCol = mix(gStreamCol, ic, m);
+    gIconW = m;
+  }
+
   void main() {
     float r = aMeta.x;
     bool dust = aMeta.y > 2.5;
-    if (dust) { gStreamPos = position * 1.4; gStreamCol = aCol0; } else stream(r);
+    if (dust) { gStreamPos = position * 1.4; gStreamCol = aCol0; } else { stream(r); iconBlend(r); }
 
     float st = clamp(uStage, 0.0, 2.0);
     float i = min(floor(st), 1.0);
@@ -429,7 +470,8 @@ const vertexShader = /* glsl */ `
 
     // smaller and fainter the further a particle is from the centre
     // (the hero stream is stretched to the screen width, so measure its fade before the stretch)
-    float sx = mix(uStreamScale, 1.0, clamp(uStage, 0.0, 1.0));
+    // (icons are not stretched, so they measure it unstretched)
+    float sx = mix(mix(uStreamScale, 1.0, clamp(uStage, 0.0, 1.0)), 1.0, gIconW);
     float fade = smoothstep(1.6, 4.6, length(vec3(p.x / sx, p.y, p.z)));
 
     vec4 world = modelMatrix * vec4(p, 1.0);
@@ -520,6 +562,39 @@ export function MorphingParticleScene() {
     geometry.setAttribute("aGlass", new THREE.BufferAttribute(momentumPoints.pos, 3));
     geometry.setAttribute("aGlassPart", new THREE.BufferAttribute(momentumPoints.part, 1));
     geometry.setAttribute("aGlassCol", new THREE.BufferAttribute(momentumPoints.col, 3));
+    // "we advise" icons: each particle's point (and colour) in every icon, read in the shader by index;
+    // the attribute budget is nearly spent, so they live in textures, filled once the page is idle
+    const index = new Float32Array(count);
+    for (let i = 0; i < count; i++) index[i] = i;
+    geometry.setAttribute("aIndex", new THREE.BufferAttribute(index, 1));
+    const iconRows = Math.ceil(count / ICON_TEX_W);
+    const iconPosTex = new THREE.DataTexture(new Float32Array(ICON_TEX_W * iconRows * ADVISE_ICON_COUNT * 4), ICON_TEX_W, iconRows * ADVISE_ICON_COUNT, THREE.RGBAFormat, THREE.FloatType);
+    const iconColTex = new THREE.DataTexture(new Uint8Array(ICON_TEX_W * iconRows * ADVISE_ICON_COUNT * 4), ICON_TEX_W, iconRows * ADVISE_ICON_COUNT, THREE.RGBAFormat, THREE.UnsignedByteType);
+    for (const tex of [iconPosTex, iconColTex]) { tex.minFilter = tex.magFilter = THREE.NearestFilter; tex.generateMipmaps = false; }
+    // built one icon per idle slot (~40 ms each) so the page never stalls; shown once all are in
+    let iconsReady = false;
+    let iconsBuilt = 0;
+    const hasIdle = typeof window.requestIdleCallback === "function";
+    let iconJob: number | ReturnType<typeof setTimeout> = 0;
+    const schedule = () => { iconJob = hasIdle ? window.requestIdleCallback(fillNextIcon, { timeout: 1500 }) : globalThis.setTimeout(fillNextIcon, 120); };
+    function fillNextIcon() {
+      const k = iconsBuilt;
+      const icon = createAdviseIcon(k, count);
+      const pos = iconPosTex.image.data as Float32Array;
+      const col = iconColTex.image.data as Uint8Array;
+      const base = k * iconRows * ICON_TEX_W;
+      for (let i = 0; i < count; i++) {
+        const o = (base + i) * 4;
+        pos[o] = icon.positions[i * 3]; pos[o + 1] = icon.positions[i * 3 + 1]; pos[o + 2] = icon.positions[i * 3 + 2]; pos[o + 3] = 1;
+        col[o] = icon.colors[i * 3] * 255; col[o + 1] = icon.colors[i * 3 + 1] * 255; col[o + 2] = icon.colors[i * 3 + 2] * 255; col[o + 3] = 255;
+      }
+      iconsBuilt++;
+      if (iconsBuilt < ADVISE_ICON_COUNT) { schedule(); return; }
+      iconPosTex.needsUpdate = true;
+      iconColTex.needsUpdate = true;
+      iconsReady = true;
+    }
+    schedule();
     geometry.boundingSphere = new THREE.Sphere(new THREE.Vector3(), 8);
 
     const uniforms = {
@@ -550,6 +625,13 @@ export function MorphingParticleScene() {
       uHub: { value: new THREE.Vector2(...targets.vaultHub) },
       uPivot: { value: new THREE.Vector2(...targets.loaderPivot) },
       uOpacity: { value: 1 },
+      uIconPos: { value: iconPosTex },
+      uIconCol: { value: iconColTex },
+      uIconRows: { value: iconRows },
+      uIconMix: { value: 0 },
+      uIconA: { value: 0 },
+      uIconB: { value: 1 },
+      uIconF: { value: 0 },
     };
     const material = new THREE.ShaderMaterial({ uniforms, vertexShader, fragmentShader, transparent: true, depthWrite: true, depthTest: true });
     const points = new THREE.Points(geometry, material);
@@ -764,6 +846,8 @@ export function MorphingParticleScene() {
     let trackEnd = 1;
     let momentumEnd = 2;
     let sportsEnd = 3;
+    let adviseTop = -1e9;
+    let adviseHeight = 0;
     let viewH = window.innerHeight;
     let halfW = 6, halfH = 3.3, camDist = 10;
     let portrait = false;
@@ -797,6 +881,8 @@ export function MorphingParticleScene() {
       momentumEnd = m ? m.getBoundingClientRect().bottom + window.scrollY : trackEnd + 1;
       const sp = document.getElementById(SECTION_IDS[SPORTS]);
       sportsEnd = sp ? sp.getBoundingClientRect().bottom + window.scrollY : momentumEnd + 1;
+      const adv = document.getElementById("advise");
+      if (adv) { const r = adv.getBoundingClientRect(); adviseTop = r.top + window.scrollY; adviseHeight = r.height; }
     }
     resize();
     const resizeObserver = new ResizeObserver(resize);
@@ -841,7 +927,9 @@ export function MorphingParticleScene() {
         * (1 - span(y, sE - vh * 1.3, sE - vh * 1.1));            // …and break back into particles at the end
       const local1 = span(y, sA + vh * 0.05, sE - vh * 1.32);     // balls drift apart
       const disperse = span(y, sE - vh * 1.15, sE - vh * 0.75);   // finale: the particles scatter and vanish
-      return { stage, cut, local0, local1, local3, tone, toGlass, mReveal, mProgress, toSports, sReveal, disperse, homeBack, y };
+      // "we advise": the strand becomes one icon per service while that section is pinned
+      const advise = adviseHeight ? adviseTimeline(y, adviseTop, adviseHeight, vh) : { mix: 0, q: 0 };
+      return { stage, cut, local0, local1, local3, tone, toGlass, mReveal, mProgress, toSports, sReveal, disperse, homeBack, iconMix: advise.mix, iconQ: advise.q, y };
     }
 
     /* ---- pointer ---- */
@@ -925,6 +1013,8 @@ export function MorphingParticleScene() {
         state.homeBack = damp(state.homeBack, target.homeBack, 5, dt);
         state.toSports = damp(state.toSports, target.toSports, 5, dt);
         state.sReveal = damp(state.sReveal, target.sReveal, 5, dt);
+        state.iconMix = damp(state.iconMix, target.iconMix, 4.5, dt);
+        state.iconQ = damp(state.iconQ, target.iconQ, 4.5, dt);
         state.scroll = damp(state.scroll, target.y, 5, dt);
         state.hover = damp(state.hover, pointerInside ? 1 : 0, 5, dt);
         uniforms.uSpread.value = damp(uniforms.uSpread.value, 1 + Math.min(gap * 0.9, 0.9), 3, dt);
@@ -980,7 +1070,15 @@ export function MorphingParticleScene() {
       const ballsRy = SPORTS_POSE.ry * sideSign + state.local1 * 0.5;
       model.rotation.y = lerp(baseRy, ballsRy, sp) + (Math.sin(t * 0.22) * 0.14 * idle + parallaxX * 0.35) * calm;
       model.rotation.x = lerp(lerp(a.rx, b.rx, eased), SPORTS_POSE.rx, sp) + (Math.sin(t * 0.17) * 0.04 * idle + parallaxY * 0.18) * calm;
-      const x = portrait ? 0 : lerp(lerp(a.x, b.x, eased), SPORTS_POSE.x * sideSign, sp) * halfW;
+      // "we advise" icons: shown opposite the pinned copy on wide screens, above it on phones
+      const iconMix = iconsReady ? clamp(state.iconMix) : 0;
+      const iconFrame = adviseIconFrame(clamp(state.iconQ, 0, ADVISE_ICON_COUNT - 1));
+      uniforms.uIconMix.value = iconMix;
+      uniforms.uIconA.value = iconFrame.a;
+      uniforms.uIconB.value = iconFrame.b;
+      uniforms.uIconF.value = iconFrame.f;
+      const iconShift = portrait ? 0 : smooth(iconMix) * w[0] * ICON_X * sideSign * halfW;
+      const x = (portrait ? 0 : lerp(lerp(a.x, b.x, eased), SPORTS_POSE.x * sideSign, sp) * halfW) + iconShift;
       // phones: objects sit in the upper part of the screen, a touch smaller, leaving the lower half to the copy
       const y = portrait ? halfH * 0.36 : 0;
       model.position.set(x, y + Math.sin(t * 0.6) * 0.05 * idle, 0);
@@ -1143,6 +1241,9 @@ export function MorphingParticleScene() {
       (ambient.material as THREE.Material).dispose();
       momentum.dispose();
       solids.dispose();
+      if (hasIdle) window.cancelIdleCallback(iconJob as number); else globalThis.clearTimeout(iconJob as ReturnType<typeof setTimeout>);
+      iconPosTex.dispose();
+      iconColTex.dispose();
       envMap.dispose();
       pmrem.dispose();
       renderer.dispose();

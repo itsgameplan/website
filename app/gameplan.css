@@ -733,27 +733,56 @@ html.lenis, .lenis.lenis-smooth { scroll-behavior: auto !important; }
 /* the Arabic glyph sits low in its em box: lift it so it reads on the same line as "EN" */
 .gp-lang-ar { font-family: "IBM Plex Sans Arabic", sans-serif; font-weight: 500; font-size: 1.15em; transform: translateY(-.16em); }
 
-/* ===== We advise. We build. — two doors straight after the hero ===== */
-.gp-split { min-height: 100svh; }
-.gp-split-title { font-size: clamp(56px, 6.4vw, 118px); margin: 0 0 8px; text-shadow: 0 2px 50px rgba(4,8,14,.5); }
-.gp-split-title em { font-style: normal; color: var(--gp-amber); }
-.gp-split .gp-door { aspect-ratio: auto; min-height: clamp(470px, 56svh, 560px); }
-.gp-split .gp-doors { margin-top: clamp(28px, 4.5svh, 56px); }
-.gp-split.gp-section { padding-top: clamp(96px, 13svh, 130px); padding-bottom: clamp(70px, 10svh, 120px); }
-.gp-split .gp-door-leaf { justify-content: flex-end; }
-.gp-split .gp-door-title { margin-bottom: 10px; }
-.gp-split-lead { display: block; font-size: 16px; line-height: 1.45; font-weight: 600; max-width: 88%; }
-.gp-split-count { display: inline-block; min-width: .65em; font-size: 1.5em; line-height: 1; font-variant-numeric: tabular-nums; text-align: center; }
-.gp-split-list { list-style: none; margin: 14px 0 0; padding: 0; display: grid; gap: 8px 18px; max-width: 92%; font-size: 14px; line-height: 1.3; }
-.gp-split-list-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-.gp-split-list li { position: relative; padding-inline-start: 14px; opacity: .88; }
-.gp-split-list li::before { content: ""; position: absolute; inset-inline-start: 0; top: .5em; width: 6px; height: 6px; border-radius: 50%; background: currentColor; opacity: .6; }
-.gp-door-glass .gp-split-count { color: var(--gp-amber); }
+/* ===== We have built 7 brands across 6 industries — headline + industries banner ===== */
+.gp-built { position: relative; z-index: 2; min-height: 92svh; display: flex; flex-direction: column; justify-content: center; gap: clamp(36px, 6svh, 64px);
+  padding: clamp(96px, 14svh, 140px) 0; color: var(--gp-cream); --accent: var(--gp-amber); }
+.gp-built-inner { width: 100%; max-width: 1380px; margin: 0 auto; padding: 0 6.5%; text-align: center; }
+.gp-built-label { display: block; font-size: 11px; letter-spacing: .16em; color: var(--gp-amber); margin-bottom: 20px; }
+.gp-built-title { margin: 0 auto; max-width: 15ch; font-size: clamp(54px, 7.4vw, 132px); line-height: .95; text-shadow: 0 2px 50px rgba(4,8,14,.55); }
+.gp-built-num { font-style: normal; color: var(--gp-amber); display: inline-block; min-width: .62em; font-variant-numeric: tabular-nums; }
+.gp-built-ticker { backdrop-filter: blur(6px); background: rgba(10, 18, 30, .45); }
+.gp-built-foot { display: flex; justify-content: center; }
+.gp-built-cta { display: inline-flex; align-items: center; gap: 10px; border: 0; background: none; color: var(--gp-cream); font-size: 11px; letter-spacing: .16em;
+  padding: 10px 0; border-bottom: 1px solid rgba(245,242,233,.35); cursor: pointer; }
+.gp-built-cta:hover, .gp-built-cta:focus-visible { color: var(--gp-amber); border-color: var(--gp-amber); }
+.gp-ar .gp-built-title { font-size: clamp(46px, 6vw, 108px); line-height: 1.15; max-width: 16ch; }
+@media (max-width: 700px) { .gp-built { min-height: 0; padding: 110px 0 90px; } .gp-built-title { font-size: clamp(42px, 11.5vw, 70px); } }
+
+/* ===== What we offer — we advise: pinned copy while the strand becomes one icon per service ===== */
+.gp-advise { --ap: 0; position: relative; z-index: 2; height: 520svh; color: var(--gp-cream); }
+.gp-advise-sticky { position: sticky; top: 0; height: 100svh; display: flex; align-items: center; padding: 0 6.5%; }
+.gp-advise-copy { width: min(46%, 600px); }
+.gp-advise-label { display: block; font-size: 11px; letter-spacing: .16em; color: var(--gp-amber); margin-bottom: 18px; }
+.gp-advise .gp-advise-title { font-size: clamp(60px, 6.6vw, 118px); max-width: none; margin: 0; text-shadow: 0 2px 40px rgba(4,8,14,.5); }
+.gp-advise .gp-advise-title em { color: var(--gp-amber); }
+.gp-advise-lead { margin: 22px 0 14px; font-size: clamp(17px, 1.4vw, 20px); color: rgba(245,242,233,.72); }
+.gp-advise-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
+.gp-advise-list li { display: flex; align-items: baseline; gap: 16px; padding: 7px 0; font-size: clamp(19px, 1.75vw, 27px); font-weight: 600; letter-spacing: -.015em;
+  opacity: 0; transform: translateY(14px); filter: blur(4px); transition: opacity .55s cubic-bezier(.16,1,.3,1), transform .55s cubic-bezier(.16,1,.3,1), filter .55s, color .4s; }
+.gp-advise-list li .gp-mono { font-size: 11px; font-weight: 500; letter-spacing: .12em; color: rgba(245,242,233,.45); transition: color .4s; }
+.gp-advise-list li.is-shown { opacity: .42; transform: none; filter: none; }
+.gp-advise-list li.is-on { opacity: 1; color: var(--gp-cream); transform: translateX(10px); }
+.gp-ar .gp-advise-list li.is-on { transform: translateX(-10px); }
+.gp-advise-list li.is-on .gp-mono { color: var(--gp-amber); }
+.gp-advise-foot { display: flex; flex-wrap: wrap; align-items: center; gap: 18px 22px; margin-top: 28px; }
+.gp-advise-count { font-size: 11px; letter-spacing: .14em; color: var(--gp-amber); }
+.gp-advise-bar { position: relative; flex: 0 0 140px; height: 2px; background: rgba(245,242,233,.16); overflow: hidden; }
+.gp-advise-bar span { position: absolute; inset: 0; background: var(--gp-amber); transform-origin: left; transform: scaleX(var(--ap)); }
+.gp-ar .gp-advise-bar span { transform-origin: right; }
+.gp-advise-cta { gap: 22px; }
 @media (max-width: 700px) {
-  .gp-split { padding-top: 110px; }
-  .gp-split .gp-door { min-height: 560px; }
-  .gp-split-list-2 { grid-template-columns: 1fr 1fr; gap: 6px 12px; font-size: 13px; }
+  .gp-advise { height: 480svh; }
+  .gp-advise-sticky { align-items: flex-end; padding: 0 7% 5svh; }
+  .gp-advise-copy { width: 100%; }
+  .gp-advise .gp-advise-title { font-size: clamp(44px, 12vw, 72px); }
+  .gp-advise-lead { margin: 12px 0 6px; font-size: 15px; }
+  .gp-advise-list { grid-template-columns: 1fr 1fr; gap: 0 12px; }
+  .gp-advise-list li { font-size: 15px; gap: 8px; padding: 4px 0; }
+  .gp-advise-list li.is-on, .gp-ar .gp-advise-list li.is-on { transform: none; }
+  .gp-advise-foot { margin-top: 14px; }
+  .gp-advise-bar { display: none; }
 }
+@media (prefers-reduced-motion: reduce) { .gp-advise-list li { transition: none; } }
 
 /* ===== Our verticals + sponsorship support (after the heritage chapter) ===== */
 .gp-verticals { position: relative; z-index: 2; padding: clamp(110px, 16svh, 170px) 6.5% clamp(110px, 16svh, 170px); color: var(--gp-cream); }
