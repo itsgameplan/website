@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ChevronDown, ChevronLeft, ChevronRight, LogOut, Mail, RefreshCw, Search } from "lucide-react";
+import { ChevronDown, ChevronLeft, ChevronRight, Download, LogOut, Mail, RefreshCw, Search, Sparkles } from "lucide-react";
 import { authClient } from "@/lib/auth-client";
 import type { FormMessage, MessageKind } from "@/lib/messages";
 
@@ -51,6 +51,39 @@ export function MessagesPanel({ user }: { user: { name: string; email: string } 
     return () => ctrl.abort();
   }, [kind, search, page, reloadKey, router]);
 
+  // AI Gateway: draft a first reply for one message
+  const [drafts, setDrafts] = useState<Record<number, { busy?: boolean; text?: string; error?: string }>>({});
+  const draftFor = async (id: number) => {
+    setDrafts((d) => ({ ...d, [id]: { ...d[id], busy: true, error: undefined } }));
+    try {
+      const res = await fetch(`/api/messages/${id}/draft`, { method: "POST" });
+      const body = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(body?.error ?? `HTTP ${res.status}`);
+      setDrafts((d) => ({ ...d, [id]: { text: body.draft } }));
+    } catch (err) {
+      setDrafts((d) => ({ ...d, [id]: { ...d[id], busy: false, error: err instanceof Error ? err.message : "Could not draft a reply." } }));
+    }
+  };
+
+  // Object Storage: export the current form's messages as a CSV in the bucket, download via a presigned link
+  const [exporting, setExporting] = useState(false);
+  const [exportNote, setExportNote] = useState<{ ok: boolean; text: string } | null>(null);
+  const exportCsv = async () => {
+    setExporting(true);
+    setExportNote(null);
+    try {
+      const res = await fetch(`/api/messages/export${kind === "all" ? "" : `?kind=${kind}`}`, { method: "POST" });
+      const body = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(body?.error ?? `HTTP ${res.status}`);
+      window.location.assign(body.url);
+      setExportNote({ ok: true, text: `Exported ${body.count} messages. The download link works for ${Math.round(body.expiresIn / 60)} minutes.` });
+    } catch (err) {
+      setExportNote({ ok: false, text: err instanceof Error ? err.message : "Export failed." });
+    } finally {
+      setExporting(false);
+    }
+  };
+
   const refresh = useCallback(() => { setLoading(true); setReloadKey((k) => k + 1); }, []);
   const pickKind = (k: MessageKind | "all") => { setLoading(true); setKind(k); setPage(1); setOpen(null); };
   const goPage = (p: number) => { setLoading(true); setPage(p); setOpen(null); };
@@ -77,8 +110,14 @@ export function MessagesPanel({ user }: { user: { name: string; email: string } 
             <h1>Messages</h1>
             <p className="ga-muted">Everything sent through the Contact, Venture Program and Advisory forms, in English and Arabic.</p>
           </div>
-          <button type="button" className="ga-btn ga-btn-ghost" onClick={refresh} aria-label="Refresh"><RefreshCw size={15} className={loading ? "ga-spin" : ""} />Refresh</button>
+          <div className="ga-head-actions">
+            <button type="button" className="ga-btn ga-btn-ghost" onClick={exportCsv} disabled={exporting}>
+              <Download size={15} />{exporting ? "Exporting…" : kind === "all" ? "Export CSV" : `Export ${KIND_LABEL[kind]} CSV`}
+            </button>
+            <button type="button" className="ga-btn ga-btn-ghost" onClick={refresh} aria-label="Refresh"><RefreshCw size={15} className={loading ? "ga-spin" : ""} />Refresh</button>
+          </div>
         </div>
+        {exportNote && <p className={exportNote.ok ? "ga-note" : "ga-error"} role="status">{exportNote.text}</p>}
 
         <div className="ga-toolbar">
           <div className="ga-tabs" role="tablist" aria-label="Form">
@@ -128,7 +167,22 @@ export function MessagesPanel({ user }: { user: { name: string; email: string } 
                     <div className="ga-letter">
                       <span className="ga-label">Full message</span>
                       <pre dir={m.locale === "ar" ? "rtl" : "ltr"}>{m.message}</pre>
-                      <a className="ga-btn ga-btn-primary" href={`mailto:${m.email}?subject=${encodeURIComponent(`Re: your message to Gameplan`)}`}><Mail size={15} />Reply by email</a>
+                      <div className="ga-actions">
+                        <a className="ga-btn ga-btn-primary" href={`mailto:${m.email}?subject=${encodeURIComponent("Re: your message to Gameplan")}${drafts[m.id]?.text ? `&body=${encodeURIComponent(drafts[m.id].text!)}` : ""}`}>
+                          <Mail size={15} />{drafts[m.id]?.text ? "Reply with this draft" : "Reply by email"}
+                        </a>
+                        <button type="button" className="ga-btn ga-btn-ghost" onClick={() => draftFor(m.id)} disabled={drafts[m.id]?.busy}>
+                          <Sparkles size={15} />{drafts[m.id]?.busy ? "Drafting…" : drafts[m.id]?.text ? "Redraft" : "Draft a reply with AI"}
+                        </button>
+                      </div>
+                      {drafts[m.id]?.error && <p className="ga-error" role="alert">{drafts[m.id].error}</p>}
+                      {drafts[m.id]?.text !== undefined && (
+                        <label className="ga-draft">
+                          <span className="ga-label">AI draft · edit before sending</span>
+                          <textarea dir={m.locale === "ar" ? "rtl" : "ltr"} rows={8} value={drafts[m.id].text}
+                            onChange={(e) => setDrafts((d) => ({ ...d, [m.id]: { ...d[m.id], text: e.target.value } }))} />
+                        </label>
+                      )}
                     </div>
                   </div>
                 )}

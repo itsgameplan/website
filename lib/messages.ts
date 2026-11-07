@@ -101,7 +101,31 @@ export async function insertMessage(m: NewMessage): Promise<FormMessage> {
   return toMessage(rows[0]);
 }
 
-export type MessageQuery = { kind?: MessageKind; search?: string; page?: number; pageSize?: number };
+export async function getMessage(id: number): Promise<FormMessage | null> {
+  const { rows } = await pool.query<Row>(`SELECT * FROM form_message WHERE id = $1`, [id]);
+  return rows[0] ? toMessage(rows[0]) : null;
+}
+
+const csvCell = (v: unknown) => {
+  const s = v == null ? "" : String(v);
+  // quote everything; neutralise spreadsheet formulas
+  return `"${(/^[=+\-@\t\r]/.test(s) ? `'${s}` : s).replace(/"/g, '""')}"`;
+};
+
+/** Every message (newest first, capped) as CSV, with a UTF-8 BOM so Excel reads Arabic correctly. */
+export async function messagesCsv(kind?: MessageKind, cap = 10_000) {
+  const params: unknown[] = [];
+  const clause = kind ? (params.push(kind), "WHERE kind = $1") : "";
+  const { rows } = await pool.query<Row>(`SELECT * FROM form_message ${clause} ORDER BY created_at DESC, id DESC LIMIT ${cap}`, params);
+  const header = ["id", "sent_at", "form", "name", "email", "company", "phone", "language", "answers", "notes", "message", "page"];
+  const lines = rows.map(toMessage).map((m) => [
+    m.id, m.createdAt, m.kind, m.name, m.email, m.company, m.phone, m.locale,
+    Object.entries(m.answers).map(([q, a]) => `${q}: ${a}`).join(" | "), m.notes, m.message, m.page,
+  ].map(csvCell).join(","));
+  return { csv: "﻿" + [header.join(","), ...lines].join("\r\n"), count: rows.length };
+}
+
+export type MessageQuery ={ kind?: MessageKind; search?: string; page?: number; pageSize?: number };
 
 /** Newest first, optionally filtered by form and a free-text search over name, email, company and message. */
 export async function listMessages({ kind, search, page = 1, pageSize = 25 }: MessageQuery) {

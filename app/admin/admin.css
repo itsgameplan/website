@@ -116,3 +116,12 @@ html, body { margin: 0; }
   .ga-top-user > span { display: none; }
   .ga-search { flex: 1 1 100%; }
 }
+
+/* AI draft + export */
+.ga-head-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.ga-note { color: #a7dcc4; margin: -8px 0 14px; font-size: 14px; }
+.ga-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.ga-draft { display: grid; gap: 8px; width: 100%; margin-top: 6px; }
+.ga-draft textarea { width: 100%; font: 14px/1.6 inherit; font-family: inherit; color: var(--ga-text); background: var(--ga-bg);
+  border: 1px solid rgba(216, 164, 93, .45); border-radius: 8px; padding: 12px 14px; resize: vertical; }
+.ga-draft textarea:focus-visible { outline: 2px solid var(--ga-amber); outline-offset: 2px; }

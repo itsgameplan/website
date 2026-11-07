@@ -8,13 +8,29 @@
  *
  * Safe to run again at any time; run it once per environment (local, production).
  */
-import { getMigrations } from "better-auth/db/migration";
-import { auth } from "@/lib/auth";
-import { pool } from "@/lib/db";
-import { MESSAGES_SCHEMA } from "@/lib/messages";
+// Schema changes go over Neon's direct (unpooled) connection when it's available; the app itself
+// keeps using the pooled DATABASE_URL. Set before the db module is imported, so it picks this up.
+if (process.env.DATABASE_URL_UNPOOLED) process.env.DATABASE_URL = process.env.DATABASE_URL_UNPOOLED;
 
 async function main() {
   if (!process.env.DATABASE_URL) throw new Error("DATABASE_URL is not set (put it in .env.local).");
+  const { getMigrations } = await import("better-auth/db/migration");
+  const { auth } = await import("@/lib/auth");
+  const { pool } = await import("@/lib/db");
+  const { MESSAGES_SCHEMA } = await import("@/lib/messages");
+  try {
+    await setup(getMigrations, auth, pool, MESSAGES_SCHEMA);
+  } finally {
+    await pool.end();
+  }
+}
+
+async function setup(
+  getMigrations: typeof import("better-auth/db/migration").getMigrations,
+  auth: typeof import("@/lib/auth").auth,
+  pool: typeof import("@/lib/db").pool,
+  MESSAGES_SCHEMA: string,
+) {
 
   const { toBeCreated, toBeAdded, runMigrations } = await getMigrations(auth.options);
   if (toBeCreated.length || toBeAdded.length) {
@@ -46,6 +62,5 @@ async function main() {
   console.log(`✓ admin ${email} created`);
 }
 
-main()
-  .catch((err) => { console.error("✗ setup failed:", err instanceof Error ? err.message : err); process.exitCode = 1; })
-  .finally(() => pool.end());
+main().catch((err) => { console.error("✗ setup failed:", err instanceof Error ? err.message : err); process.exitCode = 1; });
+
