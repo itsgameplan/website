@@ -35,6 +35,8 @@ const POSE = [
 ];
 /** Middle of the bucket mouth, in the loader design space (the point the loader drives at the camera). */
 const BUCKET_MOUTH: [number, number] = [1.98, -0.2];
+/** English (copy on the left): the loader sits right of centre, between the copy and the survey drawing. */
+const LOADER_X_LTR = 0.16;
 const SPORTS_POSE = { rx: 0.1, ry: -0.28, x: 0.44, scale: 0.92 }; // balls, on the right
 
 /** Void palette per section (same order as SECTION_IDS): gradient top, gradient bottom, light-beam colour. */
@@ -622,6 +624,7 @@ export function MorphingParticleScene() {
     /* ---- ASL mark for the vault section (drawn in the backdrop, behind the vault) ---- */
     // Arabic reads right-to-left: the balls (and the ASL mark) sit on the opposite side
     const sideSign = document.querySelector(".gp-ar") ? -1 : 1;
+    const poses = POSE.map((p, n) => (n === 1 && sideSign > 0 ? { ...p, x: LOADER_X_LTR } : p));
     const LOGO_ASPECT = 1037 / 811;
     let logoTexture: THREE.Texture | null = null;
     new THREE.TextureLoader().load("/asl/asl-lockup-white.svg", (tex) => {
@@ -717,6 +720,23 @@ export function MorphingParticleScene() {
     const rimLight = new THREE.DirectionalLight(0xbfd6ff, 1.4);
     rimLight.position.set(5, 2, -4);
     scene.add(keyLight, rimLight);
+    // the loader is lit like a real machine on site: the key light casts soft shadows (only the
+    // loader's meshes cast/receive them), sky/ground bounce fills the shadows, and a low warm light
+    // from the site-yellow beam picks out the underside of the arm and bucket
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFShadowMap;
+    keyLight.castShadow = true;
+    keyLight.shadow.mapSize.set(2048, 2048);
+    keyLight.shadow.radius = 5;
+    keyLight.shadow.bias = -0.0004;
+    keyLight.shadow.normalBias = 0.025;
+    keyLight.shadow.intensity = 0;
+    Object.assign(keyLight.shadow.camera, { left: -6, right: 6, top: 6, bottom: -6, near: 0.5, far: 30 });
+    keyLight.shadow.camera.updateProjectionMatrix();
+    const skyFill = new THREE.HemisphereLight(0xfff3dd, 0x2b2114, 0);
+    const bounce = new THREE.DirectionalLight(0xffb43a, 0);
+    bounce.position.set(3, -3, 5);
+    scene.add(skyFill, bounce);
     const camera = new THREE.PerspectiveCamera(32, 1, 0.01, 100);
     const vaultBars = new THREE.Vector3(...targets.vaultBars);
     // top face of the top (hallmarked) gold bar, in the vault's normalised space
@@ -925,7 +945,7 @@ export function MorphingParticleScene() {
       const i = Math.min(1, Math.floor(s));
       const f = s - i;
       const eased = smooth(clamp((f - 0.1) / 0.8));
-      const a = POSE[i], b = POSE[i + 1];
+      const a = poses[i], b = poses[i + 1];
       // how present each form is right now (1 when settled, fades during morphs): 0 stream, 1 loader, 2 vault
       const w = [0, 1, 2].map((n) => clamp(1 - Math.abs(s - n)));
       const back = smooth(clamp(state.homeBack));
@@ -1062,6 +1082,11 @@ export function MorphingParticleScene() {
       // it dissolves back out as soon as the next morph (or the vault → glass morph) begins
       const settle = (n: number) => smooth(clamp((w[n] - 0.55) / 0.4));
       const loaderSolid = settle(1);
+      // loader-only lighting fades with the solid loader (the shadow pass can't see the dissolve)
+      const loaderLit = smooth(clamp((loaderSolid - 0.7) / 0.3));
+      keyLight.shadow.intensity = 0.9 * loaderLit;
+      skyFill.intensity = 0.22 * loaderSolid;
+      bounce.intensity = 0.55 * loaderSolid;
       const vaultSolid = settle(2) * (1 - smooth(clamp(state.toGlass / 0.3)));
       uniforms.uSolid.value = Math.max(loaderSolid, vaultSolid);
       solids.update({ reveal: [sR, loaderSolid, vaultSolid], apart: state.local1, lift, spin: uniforms.uSpin.value, door: uniforms.uDoor.value });

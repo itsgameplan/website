@@ -124,6 +124,27 @@ const wheelFaceTexture = () => canvasTexture(256, 256, (ctx, w) => {
   }
 });
 
+/** soft ambient-occlusion blob under the machine, darkest under the four tyres */
+const contactShadowTexture = () => canvasTexture(512, 256, (ctx, w, h) => {
+  const blob = (cx: number, cy: number, rx: number, ry: number, a: number) => {
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.scale(rx / ry, 1);
+    const g = ctx.createRadialGradient(0, 0, 0, 0, 0, ry);
+    g.addColorStop(0, `rgba(0,0,0,${a})`);
+    g.addColorStop(0.55, `rgba(0,0,0,${a * 0.45})`);
+    g.addColorStop(1, "rgba(0,0,0,0)");
+    ctx.fillStyle = g;
+    ctx.fillRect(-ry, -ry, ry * 2, ry * 2);
+    ctx.restore();
+  };
+  ctx.clearRect(0, 0, w, h);
+  blob(w / 2, h / 2, w * 0.48, h * 0.46, 0.55);
+  // tyres at x -1.15 / 0.78 and z ±0.66 in a 4.9 × 2.5 plane centred on x = -0.15
+  for (const x of [-1.15, 0.78]) for (const z of [-0.66, 0.66]) {
+    blob(((x + 0.15) / 4.9 + 0.5) * w, (z / 2.5 + 0.5) * h, w * 0.09, h * 0.16, 0.8);
+  }
+});
 const grilleTexture = () => canvasTexture(128, 64, (ctx, w, h) => {
   ctx.fillStyle = "#c48d1d"; ctx.fillRect(0, 0, w, h);
   ctx.fillStyle = "#14181b";
@@ -254,6 +275,9 @@ export function createSolidForms(targets: MorphSet) {
   const track = <T extends { dispose(): void }>(x: T) => { disposables.push(x); return x; };
   const mat = (form: keyof typeof reveal, params: THREE.MeshStandardMaterialParameters, glow = 0xffd28a) =>
     track(dissolvable(new THREE.MeshStandardMaterial(params), reveal[form], new THREE.Color(glow)));
+  /** physically based variant (clear-coated paint, glass) */
+  const pmat = (form: keyof typeof reveal, params: THREE.MeshPhysicalMaterialParameters, glow = 0xffd28a) =>
+    track(dissolvable(new THREE.MeshPhysicalMaterial(params), reveal[form], new THREE.Color(glow)));
 
   /* ---- 02 sport balls ---- */
   const sports = new THREE.Group();
@@ -289,14 +313,19 @@ export function createSolidForms(targets: MorphSet) {
   const lf = framed(targets.frames.loader);
   const loader = lf.outer;
   const L = lf.inner;
-  const paint = mat("loader", { color: 0xf3b52c, roughness: 0.38, metalness: 0.25 });
-  const paintDark = mat("loader", { color: 0xcf9420, roughness: 0.45, metalness: 0.25 });
-  const frame = mat("loader", { color: 0x1d2328, roughness: 0.6, metalness: 0.4 });
-  const steel = mat("loader", { color: 0x9aa6af, roughness: 0.25, metalness: 0.95 });
-  const glass = mat("loader", { color: 0x1e3946, roughness: 0.06, metalness: 0.6 });
-  const tread = mat("loader", { map: track(treadTexture()), roughness: 0.92, metalness: 0.0 });
-  const wheelFace = mat("loader", { map: track(wheelFaceTexture()), roughness: 0.7, metalness: 0.2 });
-  const grille = mat("loader", { map: track(grilleTexture()), roughness: 0.5, metalness: 0.3 });
+  // real machine finishes: clear-coated (non-metallic) industrial yellow, satin black chassis,
+  // polished hydraulic chrome, reflective tinted glass and matte rubber
+  const paintParams: THREE.MeshPhysicalMaterialParameters = {
+    color: 0xd98f06, roughness: 0.42, metalness: 0.0, clearcoat: 0.45, clearcoatRoughness: 0.32, envMapIntensity: 0.7,
+  };
+  const paint = pmat("loader", paintParams);
+  const paintDark = pmat("loader", { ...paintParams, color: 0xb0700a, roughness: 0.55, clearcoat: 0.3 });
+  const frame = pmat("loader", { color: 0x16191c, roughness: 0.62, metalness: 0.35, clearcoat: 0.25, clearcoatRoughness: 0.5 });
+  const steel = mat("loader", { color: 0xd4dbe0, roughness: 0.14, metalness: 1.0, envMapIntensity: 1.4 });
+  const glass = pmat("loader", { color: 0x0b161c, roughness: 0.04, metalness: 0.0, clearcoat: 1.0, clearcoatRoughness: 0.02, envMapIntensity: 2.0 });
+  const tread = mat("loader", { map: track(treadTexture()), color: 0x8c8c8c, roughness: 0.96, metalness: 0.0, envMapIntensity: 0.4 });
+  const wheelFace = pmat("loader", { map: track(wheelFaceTexture()), roughness: 0.58, metalness: 0.0, clearcoat: 0.4, clearcoatRoughness: 0.3 });
+  const grille = mat("loader", { map: track(grilleTexture()), roughness: 0.55, metalness: 0.4 });
 
   const tyreGeo = track(new THREE.CylinderGeometry(0.52, 0.52, 0.36, 48));
   for (const x of [-1.15, 0.78]) for (const z of [-0.66, 0.66]) {
@@ -351,7 +380,7 @@ export function createSolidForms(targets: MorphSet) {
     scoop.setIndex(idx);
     scoop.computeVertexNormals();
     track(scoop);
-    const bucketPaint = mat("loader", { color: 0xf3b52c, roughness: 0.42, metalness: 0.25, side: THREE.DoubleSide });
+    const bucketPaint = pmat("loader", { ...paintParams, roughness: 0.5, side: THREE.DoubleSide });
     arm.add(new THREE.Mesh(scoop, bucketPaint));
     const shape = new THREE.Shape();
     shape.moveTo(p0[0], p0[1]);
@@ -361,6 +390,23 @@ export function createSolidForms(targets: MorphSet) {
     for (const z of [-W, W]) { const plate = new THREE.Mesh(plateGeo, bucketPaint); plate.position.z = z; arm.add(plate); }
     arm.add(cylinderBetween([p2[0], p2[1], -W - 0.02], [p2[0], p2[1], W + 0.02], 0.045, steel));
   }
+
+  // ground it: every part casts and receives the key light's shadow, the shadow lands on an
+  // invisible ground plane, and a soft contact shadow sits under the tyres
+  loader.traverse((o) => { if (o instanceof THREE.Mesh) { o.castShadow = true; o.receiveShadow = true; } });
+  const GROUND_Y = -0.55 - 0.52 - 0.004; // tyre centre minus tyre radius
+  const groundShadow = track(new THREE.ShadowMaterial({ color: 0x000000, opacity: 0, transparent: true, depthWrite: false }));
+  const ground = new THREE.Mesh(track(new THREE.PlaneGeometry(9, 6)), groundShadow);
+  ground.rotation.x = -Math.PI / 2;
+  ground.position.set(-0.2, GROUND_Y, 0);
+  ground.receiveShadow = true;
+  L.add(ground);
+  const contactMat = track(new THREE.MeshBasicMaterial({ map: track(contactShadowTexture()), transparent: true, opacity: 0, depthWrite: false, toneMapped: false }));
+  const contact = new THREE.Mesh(track(new THREE.PlaneGeometry(4.9, 2.5)), contactMat);
+  contact.rotation.x = -Math.PI / 2;
+  contact.position.set(-0.15, GROUND_Y + 0.002, 0);
+  contact.renderOrder = -1;
+  L.add(contact);
 
   /* ---- 04 vault ---- */
   const vf = framed(targets.frames.vault);
@@ -467,6 +513,10 @@ export function createSolidForms(targets: MorphSet) {
       b.group.position.z += s.apart * 0.35;
       b.group.rotation.y = s.apart * b.spin;
     }
+    // shadows come in only once the loader is (almost) solid: the shadow pass can't see the dissolve
+    const settled = THREE.MathUtils.smoothstep(s.reveal[1], 0.7, 1);
+    groundShadow.opacity = 0.42 * settled;
+    contactMat.opacity = 0.85 * settled;
     armPivot.rotation.z = s.lift;
     handle.rotation.z = s.spin;
     doorPivot.rotation.y = -s.door;
