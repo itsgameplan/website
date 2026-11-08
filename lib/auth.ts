@@ -1,27 +1,53 @@
+
 import { betterAuth } from "better-auth";
 import { nextCookies } from "better-auth/next-js";
 import { pool } from "@/lib/db";
 
 /**
- * Admin authentication (Better Auth, email + password, stored in PostgreSQL).
- * Public sign-up is off: the only accounts are admins created with `npm run db:setup`
- * (ADMIN_EMAIL / ADMIN_PASSWORD), so any signed-in user is an admin.
+ * Gameplan Admin Authentication
  *
- * Needs BETTER_AUTH_SECRET (32+ random characters) and BETTER_AUTH_URL (the site's URL).
+ * Email/password authentication stored in PostgreSQL.
+ * Public sign-up is disabled.
+ * Admin accounts are created via npm run db:setup.
  */
+
 export const auth = betterAuth({
   appName: "Gameplan Admin",
+
+  // Authentication base URL
+  baseURL: process.env.BETTER_AUTH_URL,
+
+  // Allow authentication requests from approved domains
+  trustedOrigins: [
+    "https://www.itsgameplan.com",
+    "https://itsgameplan.com",
+
+    // Local development only
+    ...(process.env.NODE_ENV !== "production"
+      ? ["http://localhost:3000"]
+      : []),
+  ],
+
+  // Existing PostgreSQL connection
   database: pool,
+
   emailAndPassword: {
     enabled: true,
     disableSignUp: true,
     minPasswordLength: 10,
   },
+
   session: {
-    expiresIn: 60 * 60 * 24 * 7, // a week
+    expiresIn: 60 * 60 * 24 * 7,
     updateAge: 60 * 60 * 24,
   },
-  rateLimit: { enabled: true, window: 60, max: 30 },
+
+  rateLimit: {
+    enabled: true,
+    window: 60,
+    max: 30,
+  },
+
   plugins: [nextCookies()],
 });
 
