@@ -858,12 +858,21 @@ export function MorphingParticleScene() {
     let portrait = false;
     const drawSize = new THREE.Vector2();
 
+    let drawnW = 0, drawnH = 0;
+
+    /** Page layout changed (fonts, content streaming in, …): re-measure the scroll anchors. */
     function resize() {
       const width = Math.max(1, window.innerWidth);
       const height = Math.max(1, window.innerHeight);
+      // Setting the renderer's size wipes the canvas, and this also runs from a ResizeObserver, after
+      // the frame was drawn: touching it on every page-height change flashed the backdrop during load.
+      const firstRun = drawnW === 0;
+      const sizeChanged = width !== drawnW || height !== drawnH;
+      drawnW = width;
+      drawnH = height;
       viewH = height;
       portrait = width / height < 0.9;
-      renderer.setSize(width, height, false);
+      if (sizeChanged) renderer.setSize(width, height, false);
       camera.aspect = width / height;
       const vfov = THREE.MathUtils.degToRad(camera.fov);
       // landscape: the object fills ~68% of the half-height; portrait: sized by width
@@ -888,6 +897,8 @@ export function MorphingParticleScene() {
       sportsEnd = sp ? sp.getBoundingClientRect().bottom + window.scrollY : momentumEnd + 1;
       const adv = document.getElementById("advise");
       if (adv) { const r = adv.getBoundingClientRect(); adviseTop = r.top + window.scrollY; adviseHeight = r.height; }
+      // a real window resize did wipe the canvas: repaint now so no empty frame reaches the screen
+      if (sizeChanged && !firstRun) renderer.render(scene, camera);
     }
     resize();
     const resizeObserver = new ResizeObserver(resize);
