@@ -246,13 +246,17 @@
 
 /* ===== Coloured void: one full-screen WebGL backdrop behind every section ===== */
 html, body { background: #070d16; }
-body { background-image: radial-gradient(ellipse 80% 70% at 60% 30%, #12263a 0%, #070d16 70%); background-attachment: fixed; }
+body { background: transparent; }
+/* the fallback glow behind the WebGL scene, on its own fixed layer (background-attachment: fixed repaints on every scroll) */
+body::before { content: ""; position: fixed; inset: 0; z-index: -1; pointer-events: none;
+  background: radial-gradient(ellipse 80% 70% at 60% 30%, #12263a 0%, #070d16 70%); }
 .gp-site { background: transparent; color: var(--gp-cream); overflow: clip; }
 .gp-site > main, .gp-footer { position: relative; z-index: 1; }
 .gp-morph-scene {
   position: fixed; inset: 0; width: auto; height: auto; top: 0; right: 0;
   z-index: 0; pointer-events: none; opacity: 0; transition: opacity 1.2s ease;
 }
+.gp-morph-scene { bottom: auto; height: 100vh; height: 100lvh; }
 .gp-morph-scene.is-ready { opacity: 1; }
 .gp-morph-canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
 
@@ -278,7 +282,7 @@ body { background-image: radial-gradient(ellipse 80% 70% at 60% 30%, #12263a 0%,
 .gp-footer { background: transparent; border-top: 1px solid rgba(245,242,233,.12); }
 
 @media (max-width: 700px) {
-  .gp-morph-scene { width: auto; height: auto; min-height: 0; top: 0; }
+  .gp-morph-scene { width: auto; min-height: 0; top: 0; }
 }
 
 /* ===== Momentum case study (visuals live in the WebGL scene) ===== */
@@ -414,12 +418,14 @@ body { background-image: radial-gradient(ellipse 80% 70% at 60% 30%, #12263a 0%,
 #advisory.gp-pinned-section { height: 260svh; min-height: 0; }
 .gp-pin-layer { --in: 0; --out: 0; position: fixed; inset: 0; z-index: 3; min-height: 0; overflow: hidden; pointer-events: none;
   padding-top: clamp(96px, 15svh, 150px);
-  opacity: calc(1 - var(--out)); transform: translateY(calc(var(--out) * -70px)); filter: blur(calc(var(--out) * 8px)); }
+  opacity: calc(1 - var(--out)); transform: translateY(calc(var(--out) * -70px)); will-change: opacity, transform; }
 .gp-pin-layer.is-live { pointer-events: auto; }
 .gp-pin-layer.is-hidden { visibility: hidden; }
 /* each line rises in from below, one after another (--i is its place in the order) */
 .gp-pin-item { --p: clamp(0, calc(var(--in) * 1.9 - var(--i, 0) * 0.12), 1);
-  opacity: var(--p); transform: translateY(calc((1 - var(--p)) * 90px)); }
+  opacity: var(--p); transform: translateY(calc((1 - var(--p)) * 90px)); will-change: opacity, transform; }
+/* hidden pinned layers: stop their looping animations too */
+.gp-pin-layer.is-hidden * { animation-play-state: paused !important; }
 .gp-heading .gp-pin-item { display: block; }
 #gp-pin-vault .gp-advisory-lower { margin-top: clamp(28px, 5svh, 64px); }
 #gp-pin-vault .gp-advisory-row { padding: 16px 0; }
@@ -740,7 +746,8 @@ html.lenis, .lenis.lenis-smooth { scroll-behavior: auto !important; }
 .gp-built-label { display: block; font-size: 11px; letter-spacing: .16em; color: var(--gp-amber); margin-bottom: 20px; }
 .gp-built-title { margin: 0 auto; max-width: 15ch; font-size: clamp(54px, 7.4vw, 132px); line-height: .95; text-shadow: 0 2px 50px rgba(4,8,14,.55); }
 .gp-built-num { font-style: normal; color: var(--gp-amber); display: inline-block; min-width: .62em; font-variant-numeric: tabular-nums; }
-.gp-built-ticker { backdrop-filter: blur(6px); background: rgba(10, 18, 30, .45); }
+.gp-built-ticker { background: rgba(10, 18, 30, .62); }
+.gp-ticker-track { will-change: transform; }
 .gp-built-foot { display: flex; justify-content: center; }
 .gp-built-cta { display: inline-flex; align-items: center; gap: 10px; border: 0; background: none; color: var(--gp-cream); font-size: 11px; letter-spacing: .16em;
   padding: 10px 0; border-bottom: 1px solid rgba(245,242,233,.35); cursor: pointer; }
@@ -806,7 +813,7 @@ html.lenis, .lenis.lenis-smooth { scroll-behavior: auto !important; }
 .gp-sponsor-photo { position: relative; margin: 0; border-radius: 10px; overflow: hidden; aspect-ratio: 3 / 2; background: #0b111a;
   box-shadow: 0 30px 80px rgba(0,0,0,.45); border: 1px solid rgba(245,242,233,.12); }
 .gp-sponsor-photo figcaption { position: absolute; inset-inline-start: 18px; bottom: 16px; font-size: 10px; letter-spacing: .14em; color: var(--gp-cream);
-  background: rgba(7,10,16,.6); backdrop-filter: blur(6px); padding: 7px 11px; border-radius: 4px; }
+  background: rgba(7,10,16,.78); padding: 7px 11px; border-radius: 4px; }
 .gp-sponsor-copy .gp-verticals-intro { margin-top: 24px; }
 .gp-ar .gp-verticals .gp-heading { font-size: clamp(50px, 5.4vw, 96px); }
 @media (max-width: 900px) {
@@ -840,3 +847,10 @@ html.lenis, .lenis.lenis-smooth { scroll-behavior: auto !important; }
 /* footer: small admin login link */
 .gp-footer-login { display: inline-flex; align-items: center; gap: 6px; opacity: .55; transition: opacity .2s; }
 .gp-footer-login:hover, .gp-footer-login:focus-visible { opacity: 1; }
+
+/* ===== Performance: touch devices and small screens skip animated blur filters (fade + slide stay) ===== */
+@media (max-width: 700px), (hover: none) and (pointer: coarse) {
+  .gp-reveal, .gp-reveal-visible, .gp-advise-list li, .gp-momentum-words li { filter: none !important; }
+  @keyframes gp-up { from { opacity: 0; transform: translateY(50px); } to { opacity: 1; transform: translateY(0); } }
+  .gp-hero-title, .gp-heading, .gp-built-title, .gp-footer-title, .gp-advise .gp-advise-title { text-shadow: 0 2px 24px rgba(4,8,14,.45); }
+}

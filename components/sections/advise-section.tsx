@@ -18,24 +18,42 @@ export function AdviseSection({ t, locale }: { t: Dictionary; locale: Locale }) 
   useEffect(() => {
     const section = ref.current;
     if (!section) return;
+    // the progress bar is the only thing that reads --ap: writing it there (not on the section)
+    // keeps each scroll step from restyling the whole pinned chapter
+    const bar = section.querySelector<HTMLElement>(".gp-advise-bar span");
+    // layout is measured only when it changes; scrolling just reads scrollY (no forced layout per frame)
+    let top = 0, height = 1, viewH = window.innerHeight, scrollY = window.scrollY;
     let frame = 0;
+    let lastAp = "";
     const update = () => {
       frame = 0;
-      const r = section.getBoundingClientRect();
-      const tl = adviseTimeline(window.scrollY, r.top + window.scrollY, r.height, window.innerHeight);
-      section.style.setProperty("--ap", tl.pinned.toFixed(3));
+      const tl = adviseTimeline(scrollY, top, height, viewH);
+      const ap = tl.pinned.toFixed(3);
+      if (ap !== lastAp) { lastAp = ap; bar?.style.setProperty("--ap", ap); }
       // an item shows once the strand has (mostly) become its icon, and the last one stays at the end
       const next = tl.mix > 0.45 || tl.pinned > 0.5 ? adviseIconFrame(tl.q).active : -1;
       setActive((prev) => (prev === next ? prev : next));
     };
-    const onScroll = () => { if (!frame) frame = requestAnimationFrame(update); };
-    update();
+    const measure = () => {
+      const r = section.getBoundingClientRect();
+      top = r.top + window.scrollY;
+      height = r.height;
+      viewH = window.innerHeight;
+      scrollY = window.scrollY;
+      update();
+    };
+    const onScroll = () => { scrollY = window.scrollY; if (!frame) frame = requestAnimationFrame(update); };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(section);
+    observer.observe(document.body);
     window.addEventListener("scroll", onScroll, { passive: true });
-    window.addEventListener("resize", onScroll, { passive: true });
+    window.addEventListener("resize", measure, { passive: true });
     return () => {
       cancelAnimationFrame(frame);
+      observer.disconnect();
       window.removeEventListener("scroll", onScroll);
-      window.removeEventListener("resize", onScroll);
+      window.removeEventListener("resize", measure);
     };
   }, []);
 

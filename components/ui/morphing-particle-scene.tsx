@@ -95,11 +95,14 @@ const backgroundFragment = /* glsl */ `
     vec2 u = f * f * (3.0 - 2.0 * f);
     return mix(mix(hash(i), hash(i + vec2(1, 0)), u.x), mix(hash(i + vec2(0, 1)), hash(i + vec2(1, 1)), u.x), u.y);
   }
+  // haze: 3 octaves are visually identical to 4 at this low frequency, for a quarter less work per pixel
   float fbm(vec2 p) {
     float v = 0.0, a = 0.5;
-    for (int i = 0; i < 4; i++) { v += a * noise(p); p = p * 2.03 + 17.1; a *= 0.5; }
-    return v;
+    for (int i = 0; i < 3; i++) { v += a * noise(p); p = p * 2.03 + 17.1; a *= 0.5; }
+    return v + 0.03125; // keeps the 4-octave mean brightness
   }
+  // beam dust only modulates brightness slightly: 2 octaves are enough
+  float fbm2(vec2 p) { return 0.5 * noise(p) + 0.25 * noise(p * 2.03 + 17.1) + 0.09375; }
 
   // A soft volumetric shaft entering from above the frame; 'reach' is how far down it has struck.
   float beam(vec2 p, vec2 origin, float angle, float width, float seed, float reach) {
@@ -112,9 +115,12 @@ const backgroundFragment = /* glsl */ `
     float core = exp(-(across * across) / (w * w * 0.08)) * 0.35;
     float falloff = smoothstep(-0.05, 0.3, along) * exp(-max(along, 0.0) * 0.4);
     float strike = 1.0 - smoothstep(reach - 0.45, reach, along);
-    float dust = 0.55 + 0.45 * fbm(vec2(across * 7.0 + seed, along * 1.6 - uTime * 0.07 + uScroll * 0.6));
+    // most of the screen is outside any given shaft: skip the noise there (it would add < 1/255)
+    float lit = (shaft + core) * falloff * strike;
+    if (lit < 0.002) return 0.0;
+    float dust = 0.55 + 0.45 * fbm2(vec2(across * 7.0 + seed, along * 1.6 - uTime * 0.07 + uScroll * 0.6));
     float flicker = 0.8 + 0.2 * sin(uTime * (0.35 + h1(seed) * 0.3) + seed * 4.0);
-    return (shaft + core) * falloff * strike * dust * flicker;
+    return lit * dust * flicker;
   }
 
   // Each section owns four rays with their own origins, angles and widths.
@@ -528,15 +534,23 @@ export function MorphingParticleScene() {
     if (!container || !track) return;
     const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
+    /* ---- device tier: phones, tablets and low-end machines get a lighter setup ---- */
+    const mobile = window.innerWidth < 700;
+    const touch = window.matchMedia("(hover: none) and (pointer: coarse)").matches;
+    const nav = navigator as Navigator & { deviceMemory?: number };
+    const lowEnd = (nav.hardwareConcurrency || 8) <= 4 || (nav.deviceMemory ?? 8) <= 4;
+    const deviceRatio = window.devicePixelRatio || 1;
+    // MSAA is expensive and adds little at high pixel ratios (the particles already antialias their own edges)
+    const antialias = !mobile && !touch && !lowEnd && deviceRatio < 1.5;
+
     let renderer: THREE.WebGLRenderer;
     try {
-      renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
+      renderer = new THREE.WebGLRenderer({ antialias, powerPreference: "high-performance" });
     } catch {
       return; // the CSS gradient on <body> remains as the fallback
     }
 
-    const mobile = window.innerWidth < 700;
-    const count = mobile ? 15000 : 30000;
+    const count = mobile ? 15000 : lowEnd || touch ? 22000 : 30000;
     const targets = createMorphTargets(count);
 
     /* ---- morphing object ---- */
@@ -720,15 +734,16 @@ export function MorphingParticleScene() {
       tex.anisotropy = 8;
       bgUniforms.uLogo.value = tex;
     });
+    const rtl = document.documentElement.dir === "rtl" || sideSign < 0;
     function updateLogo(amount: number) {
+      // (runs every frame: uses the cached viewport size, never touches the DOM)
+      const vw = drawnW;
       // phones: the copy covers the right-hand side, so the mark is left out there
-      bgUniforms.uLogoAmt.value = logoTexture && window.innerWidth >= 700 ? amount : 0;
+      bgUniforms.uLogoAmt.value = logoTexture && vw >= 700 ? amount : 0;
       // right-hand side, vertically centred (mirrored for Arabic)
-      const vw = window.innerWidth;
       const mobileLayout = vw < 700;
       const w = mobileLayout ? 0.3 : Math.min(0.17, 260 / vw);
       const h = (w * vw) / LOGO_ASPECT / viewH;
-      const rtl = document.documentElement.dir === "rtl" || !!document.querySelector(".gp-ar");
       const x = rtl ? 0.065 : 1 - 0.065 - w;
       const y = mobileLayout ? 0.12 : 0.5 - h / 2;
       bgUniforms.uLogoRect.value.set(x, y, w, h);
@@ -765,11 +780,14 @@ export function MorphingParticleScene() {
     const mapSection = document.getElementById(SECTION_IDS[LOADER]);
     let mapTexture: THREE.CanvasTexture | null = null;
     let mapDrawStart = -1;
+    // the section's box in page coordinates, measured in resize() so the frame loop never forces a layout
+    const mapBox = { left: 0, top: 0, width: 1, height: 1 };
     const mapTimer = window.setTimeout(() => {
       if (!mapSection) return;
       const build = () => {
         const r = mapSection.getBoundingClientRect();
-        const w = 2048;
+        // phones show the map at well under 1024 device pixels across: a smaller canvas saves ~24 MB
+        const w = mobile || lowEnd ? 1024 : 2048;
         const h = Math.min(4096, Math.round(w * (r.height / Math.max(1, r.width))));
         mapTexture = new THREE.CanvasTexture(drawSurveyMap(w, h));
         mapTexture.anisotropy = 8;
@@ -779,12 +797,12 @@ export function MorphingParticleScene() {
       // wait for the mono font so the elevation labels render in it
       document.fonts.load('600 14px "IBM Plex Mono"').then(build, build);
     }, 400);
-    function updateSurveyMap(t: number) {
+    function updateSurveyMap(t: number, scrollY: number) {
       if (!mapSection || !mapTexture) return;
-      const r = mapSection.getBoundingClientRect();
-      bgUniforms.uMapRect.value.set(r.left / window.innerWidth, r.top / viewH, r.width / window.innerWidth, r.height / viewH);
+      const top = mapBox.top - scrollY;
+      bgUniforms.uMapRect.value.set(mapBox.left / drawnW, top / viewH, mapBox.width / drawnW, mapBox.height / viewH);
       // plot it the first time the section comes into view; after that it stays drawn
-      if (mapDrawStart < 0 && r.top < viewH * 0.75 && r.bottom > 0) mapDrawStart = t;
+      if (mapDrawStart < 0 && top < viewH * 0.75 && top + mapBox.height > 0) mapDrawStart = t;
       const since = mapDrawStart < 0 ? 0 : (reducedMotion ? 10 : t - mapDrawStart);
       bgUniforms.uMapReveal.value = smooth(clamp(since / 2.8));
       bgUniforms.uMapLabels.value = smooth(clamp((since - 2.3) / 0.8));
@@ -812,8 +830,11 @@ export function MorphingParticleScene() {
     // from the site-yellow beam picks out the underside of the arm and bucket
     renderer.shadowMap.enabled = true;
     renderer.shadowMap.type = THREE.PCFShadowMap;
+    // the shadow pass is only needed while the solid loader is on screen: frame() requests it then
+    renderer.shadowMap.autoUpdate = false;
     keyLight.castShadow = true;
-    keyLight.shadow.mapSize.set(2048, 2048);
+    const shadowSize = mobile || touch || lowEnd ? 1024 : 2048;
+    keyLight.shadow.mapSize.set(shadowSize, shadowSize);
     keyLight.shadow.radius = 5;
     keyLight.shadow.bias = -0.0004;
     keyLight.shadow.normalBias = 0.025;
@@ -841,7 +862,12 @@ export function MorphingParticleScene() {
     const zoomUp = new THREE.Vector3();
     const ZOOM_START = 0.07; // camera height above the emblem centre when the veil lifts
 
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.75));
+    /* ---- adaptive resolution: the backdrop is soft, so it can drop resolution to hold the frame rate ---- */
+    // start conservatively on phones / weak machines and let the quality governor (see frame()) adjust it
+    const maxRatio = Math.min(deviceRatio, mobile || touch ? 1.5 : lowEnd ? 1.25 : 1.75);
+    const minRatio = Math.min(maxRatio, mobile || touch ? 0.75 : 0.85);
+    let pixelRatio = Math.min(maxRatio, mobile || touch || lowEnd ? 1.15 : 1.5);
+    renderer.setPixelRatio(pixelRatio);
     renderer.domElement.setAttribute("aria-hidden", "true");
     renderer.domElement.className = "gp-morph-canvas";
     container.prepend(renderer.domElement);
@@ -860,10 +886,55 @@ export function MorphingParticleScene() {
 
     let drawnW = 0, drawnH = 0;
 
+    /** point sizes are in drawing-buffer pixels, so they follow the pixel ratio */
+    function updatePointScale() {
+      renderer.getDrawingBufferSize(drawSize);
+      uniforms.uScale.value = drawSize.y / (2 * Math.tan(THREE.MathUtils.degToRad(camera.fov) / 2));
+      momentum.setPointScale(uniforms.uScale.value);
+    }
+
+    /**
+     * Quality governor: watches the real frame time and steps the render resolution down while the
+     * device can't keep up (weak GPUs, phones, battery saver), and back up when it has headroom.
+     * It never climbs back above a ratio that already proved too slow, so it settles instead of
+     * oscillating. Changes are applied inside frame(), right before rendering, so no blank frame shows.
+     */
+    const governor = { sum: 0, frames: 0, windowStart: 0, goodWindows: 0, ceiling: maxRatio, warmup: 2.5 };
+    function govern(now: number, dtMs: number, t: number) {
+      if (t < governor.warmup || dtMs > 250 || document.hidden) { governor.windowStart = now; governor.sum = governor.frames = 0; return; }
+      governor.sum += dtMs;
+      governor.frames++;
+      if (now - governor.windowStart < 1000) return;
+      const avg = governor.sum / governor.frames;
+      governor.windowStart = now;
+      governor.sum = governor.frames = 0;
+      let next = pixelRatio;
+      if (avg > 22 && pixelRatio > minRatio) {
+        // under ~45 fps: drop resolution, and remember this ratio is too much for this device
+        governor.ceiling = pixelRatio * 0.97;
+        next = Math.max(minRatio, pixelRatio * (avg > 34 ? 0.75 : 0.87));
+        governor.goodWindows = 0;
+      } else if (avg < 18.5) {
+        // holding 60 fps (or better) for a few seconds: try a little more sharpness
+        if (++governor.goodWindows >= 3 && pixelRatio < governor.ceiling) {
+          next = Math.min(governor.ceiling, maxRatio, pixelRatio * 1.12);
+          governor.goodWindows = 0;
+        }
+      } else governor.goodWindows = 0;
+      if (Math.abs(next - pixelRatio) > 0.01) {
+        pixelRatio = next;
+        renderer.setPixelRatio(pixelRatio);
+        renderer.setSize(drawnW, drawnH, false);
+        updatePointScale();
+      }
+    }
+
     /** Page layout changed (fonts, content streaming in, …): re-measure the scroll anchors. */
     function resize() {
       const width = Math.max(1, window.innerWidth);
-      const height = Math.max(1, window.innerHeight);
+      // the scene is sized to the *large* viewport (CSS: 100lvh), so a phone's address bar sliding in
+      // and out while scrolling no longer resizes (and wipes) the canvas mid-scroll
+      const height = Math.max(1, container!.clientHeight || window.innerHeight);
       // Setting the renderer's size wipes the canvas, and this also runs from a ResizeObserver, after
       // the frame was drawn: touching it on every page-height change flashed the backdrop during load.
       const firstRun = drawnW === 0;
@@ -880,10 +951,8 @@ export function MorphingParticleScene() {
       halfW = halfH * camera.aspect;
       camDist = halfH / Math.tan(vfov / 2);
       camera.updateProjectionMatrix();
-      renderer.getDrawingBufferSize(drawSize);
-      uniforms.uScale.value = drawSize.y / (2 * Math.tan(vfov / 2));
+      updatePointScale();
       uniforms.uStreamScale.value = portrait ? 1 : Math.max(1, (halfW * 1.04) / 4.4); // stream half-width is 4.4
-      momentum.setPointScale(uniforms.uScale.value);
       bgUniforms.uAspect.value = camera.aspect;
       ambientUniforms.uHalf.value.set(halfW, halfH);
       anchors = SECTION_IDS.map((id) => {
@@ -897,6 +966,10 @@ export function MorphingParticleScene() {
       sportsEnd = sp ? sp.getBoundingClientRect().bottom + window.scrollY : momentumEnd + 1;
       const adv = document.getElementById("advise");
       if (adv) { const r = adv.getBoundingClientRect(); adviseTop = r.top + window.scrollY; adviseHeight = r.height; }
+      if (mapSection) {
+        const r = mapSection.getBoundingClientRect();
+        Object.assign(mapBox, { left: r.left, top: r.top + window.scrollY, width: r.width, height: r.height });
+      }
       // a real window resize did wipe the canvas: repaint now so no empty frame reaches the screen
       if (sizeChanged && !firstRun) renderer.render(scene, camera);
     }
@@ -1004,10 +1077,13 @@ export function MorphingParticleScene() {
       bgUniforms.uBeam.value.copy(palette[i][2]).lerp(palette[i + 1][2], f);
     }
 
+    let loaderOnLast = false;
     function frame(now: number) {
-      const dt = Math.min(0.05, (now - last) / 1000);
+      const rawMs = now - last;
+      const dt = Math.min(0.05, rawMs / 1000);
       last = now;
       const t = (now - start) / 1000;
+      if (!reducedMotion) govern(now, rawMs, t);
       const target = readScroll();
 
       if (reducedMotion) {
@@ -1074,7 +1150,8 @@ export function MorphingParticleScene() {
       setPin(pinLoader, loaderIn, loaderOut);
       setPin(pinVault, smooth(clamp((s - 1.62) / 0.38)) * (1 - smooth(clamp((dolly - 0.05) / 0.3))), smooth(clamp(state.toGlass / 0.35)));
       setVeil(veil);
-      document.documentElement.classList.toggle("gp-loader-on", loaderIn > 0.85 && loaderOut < 0.4);
+      const loaderOn = loaderIn > 0.85 && loaderOut < 0.4;
+      if (loaderOn !== loaderOnLast) { loaderOnLast = loaderOn; document.documentElement.classList.toggle("gp-loader-on", loaderOn); }
 
       // scroll-linked turning while each form plays its motion
       const twirl = Math.sin(Math.PI * eased) * 0.9;
@@ -1199,6 +1276,8 @@ export function MorphingParticleScene() {
       // loader-only lighting fades with the solid loader (the shadow pass can't see the dissolve)
       const loaderLit = smooth(clamp((loaderSolid - 0.7) / 0.3));
       keyLight.shadow.intensity = 0.9 * loaderLit;
+      // redraw the shadow map only while the solid loader is visible (it was a full extra pass every frame)
+      if (loaderSolid > 0.002) renderer.shadowMap.needsUpdate = true;
       skyFill.intensity = 0.22 * loaderSolid;
       bounce.intensity = 0.55 * loaderSolid;
       const vaultSolid = settle(2) * (1 - smooth(clamp(state.toGlass / 0.3)));
@@ -1212,7 +1291,7 @@ export function MorphingParticleScene() {
       bgUniforms.uTime.value = t * idle;
       bgUniforms.uScroll.value = state.scroll / viewH;
       bgUniforms.uTone.value = clamp(state.tone, 0, PALETTES.length - 1);
-      updateSurveyMap(t);
+      updateSurveyMap(t, target.y);
       // the art deco line-work belongs to the vault section and moves with the scroll position
       bgUniforms.uDeco.value = smooth(clamp(1 - Math.abs(state.tone - VAULT) * 1.3));
       // vault section: no floating specks or dust — only the vault itself
@@ -1239,6 +1318,13 @@ export function MorphingParticleScene() {
     }
     container.classList.add("is-ready");
 
+    // compile every material up front (the solid loader, vault, balls and Momentum objects are hidden
+    // at first), so the first time each one appears mid-scroll doesn't stall on shader compilation;
+    // (compile() only starts the GPU link, which runs in parallel where the browser supports it;
+    // compileAsync() is avoided: it throws on a material it can't prepare ahead of time)
+    const warmup = () => { try { renderer.compile(scene, camera); } catch { /* compiles lazily instead */ } };
+    const warmJob = hasIdle ? window.requestIdleCallback(warmup, { timeout: 2000 }) : globalThis.setTimeout(warmup, 300);
+
     return () => {
       cancelAnimationFrame(raf);
       if (onStaticScroll) window.removeEventListener("scroll", onStaticScroll);
@@ -1258,6 +1344,7 @@ export function MorphingParticleScene() {
       momentum.dispose();
       solids.dispose();
       if (hasIdle) window.cancelIdleCallback(iconJob as number); else globalThis.clearTimeout(iconJob as ReturnType<typeof setTimeout>);
+      if (hasIdle) window.cancelIdleCallback(warmJob as number); else globalThis.clearTimeout(warmJob as ReturnType<typeof setTimeout>);
       iconPosTex.dispose();
       iconColTex.dispose();
       envMap.dispose();

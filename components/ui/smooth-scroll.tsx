@@ -15,6 +15,9 @@ declare global {
 export function SmoothScroll() {
   useEffect(() => {
     if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    // touch screens already scroll with native momentum (Lenis leaves touch alone anyway):
+    // skip it there so phones don't run an extra animation loop for nothing
+    if (window.matchMedia("(hover: none) and (pointer: coarse)").matches) return;
     let lenis: Lenis | undefined;
     let frame = 0;
     let active = true;
